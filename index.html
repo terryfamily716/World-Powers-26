@@ -9,12 +9,13 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
-    #map { height: 65vh; width: 100%; }
+    #map { height: 60vh; width: 100%; }
     .controls { padding: 10px 12px; background: #1e293b; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid #334155; }
     button { background: #ef4444; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px; }
     button:hover { background: #dc2626; }
     button.blue { background: #3b82f6; }
     button.green { background: #22c55e; }
+    button.purple { background: #a855f7; }
     button:disabled { opacity: 0.4; cursor: not-allowed; }
     .player-info { padding: 10px 16px; background: #1e293b; font-size: 14px; border-bottom: 1px solid #334155; }
     .stats-card { display: none; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px 16px; margin: 10px 12px; font-size: 13px; line-height: 1.7; }
@@ -24,23 +25,31 @@
     .stats-card .owned { color: #22c55e; }
     .stats-card .allied { color: #3b82f6; }
     .stats-card .neutral { color: #94a3b8; }
-    .log { background: #0f172a; border-top: 1px solid #334155; padding: 12px; height: 120px; overflow-y: auto; font-size: 13px; }
+    .crisis-banner { display: none; background: #7f1d1d; border: 1px solid #ef4444; border-radius: 8px; padding: 12px 16px; margin: 10px 12px; font-size: 13px; line-height: 1.6; }
+    .crisis-banner.visible { display: block; }
+    .crisis-banner .crisis-title { font-size: 16px; font-weight: 700; color: #fca5a5; }
+    .vote-row { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .vote-row button { font-size: 12px; padding: 6px 12px; }
+    .log { background: #0f172a; border-top: 1px solid #334155; padding: 12px; height: 110px; overflow-y: auto; font-size: 13px; }
     .version { position: absolute; top: 8px; right: 8px; z-index: 1000; background: rgba(15,23,42,0.85); color: #FFD700; font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 4px; }
     .leaflet-container { background: #0f172a; }
     .claim-cost { color: #fb923c; font-weight: 600; }
+    .conflict-tag { color: #f87171; font-weight: 700; }
   </style>
 </head>
 <body>
-  <div class="version">11.24.26 V0.02</div>
+  <div class="version">11.24.26 V0.03</div>
   <div class="controls">
     <button onclick="nextTurn()" class="green">Next Turn</button>
     <button onclick="investMilitary()" class="blue">Invest in Military</button>
     <button onclick="attack()">Attack Selected</button>
     <button onclick="diplomacy()">Diplomacy / Alliance</button>
     <button onclick="research()">Research Tech</button>
+    <button onclick="openUN()" class="purple">UN</button>
   </div>
   <div class="player-info" id="player-info">Select a country on the map to begin.</div>
   <div class="stats-card" id="stats-card"></div>
+  <div class="crisis-banner" id="crisis-banner"></div>
   <div id="map"></div>
   <div class="log" id="log">Welcome to World Powers 26. Tap a country to claim it.</div>
   <script>
@@ -52,6 +61,8 @@
     let money = 1000;
     let selectedTarget = null;
     let map, geoLayer;
+    let activeCrisis = null;
+    let crisisCooldown = 0;
 
     const palette = ["#3b82f6","#ef4444","#22c55e","#facc15","#a855f7","#fb923c","#14b8a6","#ec4899","#6366f1","#84cc16","#06b6d4","#f43f5e","#8b5cf6","#d946ef","#0ea5e9","#10b981"];
 
@@ -74,7 +85,7 @@
       "BLR": "Lukashenko", "KAZ": "Tokayev", "UZB": "Mirziyoyev", "TKM": "Berdymukhamedov",
       "KGZ": "Japarov", "TJK": "Rahmon", "MNG": "Ukhnaagiin", "MMR": "Min Aung Hlaing",
       "KHM": "Hun Manet", "LAO": "Thongloun", "NPL": "Oli", "BTN": "Jigme Khesar", "LKA": "Dissanayake",
-      "BGD": "Yunus", "NPL": "Oli", "MDV": "Muizzu", "BRN": "Hassanal Bolkiah", "TLS": "Rama-Horta",
+      "BGD": "Yunus", "MDV": "Muizzu", "BRN": "Hassanal Bolkiah", "TLS": "Rama-Horta",
       "FJI": "Rabuka", "PNG": "Marape", "SLB": "Sogavare", "VUT": "Loughman", "WSM": "Laaulialemalietoa",
       "TON": "Tupou VI", "KIR": "Taneti", "TUV": "Feleti", "NRU": "Adeang", "PLW": "Whipps",
       "FSM": "Simina", "MHL": "Heine", "COK": "Brown", "NIU": "Talagi", "TKL": "Feleti"
@@ -139,7 +150,7 @@
       "TTO": 1.4, "BLZ": 0.41, "SUR": 0.62, "GUY": 0.80, "LUX": 0.66, "MLT": 0.54, "CYP": 1.2,
       "EST": 1.3, "LVA": 1.9, "LTU": 2.8, "SVN": 2.1, "SVK": 5.4, "HRV": 3.9, "BIH": 3.2,
       "SRB": 6.6, "MNE": 0.62, "MKD": 2.1, "ALB": 2.8, "XKX": 1.8, "MDA": 2.6, "GEO": 3.7,
-      "ARM": 3.0, "AZE": 10.1, "GEO": 3.7
+      "ARM": 3.0, "AZE": 10.1
     };
 
     const gdps = {
@@ -148,10 +159,18 @@
       "ESP": 1600, "IDN": 1400, "NLD": 1100, "TUR": 1100, "SAU": 1100, "CHE": 950, "POL": 850,
       "ARG": 640, "SWE": 610, "BEL": 650, "IRL": 550, "NOR": 500, "AUT": 520, "ISR": 530, "THA": 510,
       "ARE": 510, "NGA": 400, "EGY": 390, "DNK": 410, "SGP": 500, "PHL": 440, "MYS": 440, "HKG": 410,
-      "VNM": 430, "BGD": 450, "PAK": 340, "CHL": 330, "FIN": 300, "CZ E": 330, "ROU": 350, "NZL": 250,
-      "PER": 270, "QAT": 240, "KZ A": 290, "PRT": 290, "GRC": 250, "ALG": 270, "KWT": 160, "HUN": 210,
-      "UKR": 160, "MAR": 150, "COL": 420, "ZAF": 380, "IRL": 550
+      "VNM": 430, "BGD": 450, "PAK": 340, "CHL": 330, "FIN": 300, "CZE": 330, "ROU": 350, "NZL": 250,
+      "PER": 270, "QAT": 240, "KAZ": 290, "PRT": 290, "GRC": 250, "DZA": 270, "KWT": 160, "HUN": 210,
+      "UKR": 160, "MAR": 150, "COL": 420, "ZAF": 380
     };
+
+    const securityCouncil = ["USA", "CHN", "RUS", "GBR", "FRA"];
+
+    const crisisTypes = [
+      { type: "refugee_surge", title: "Refugee Surge", desc: "Millions displaced, border states overwhelmed." },
+      { type: "nuclear_scare", title: "Nuclear Scare", desc: "Intelligence suggests possible weapons activity." },
+      { type: "pandemic", title: "Pandemic Outbreak", desc: "New pathogen spreading rapidly across borders." }
+    ];
 
     function normalizeId(feature) {
       return feature.properties["ISO_A3"] || feature.properties["iso_a3"] || feature.id || feature.properties["name"];
@@ -187,11 +206,12 @@
       const owned = c && c.owner === "You";
       const allied = c && c.owner && c.owner !== "You" && c.relations && c.relations[playerCountry] > 60;
       const selected = c && selectedTarget === id;
+      const crisisHit = activeCrisis && activeCrisis.center === id;
       return {
-        fillColor: getColor(id),
-        fillOpacity: owned ? 0.75 : (allied ? 0.55 : 0.35),
-        color: selected ? "#facc15" : (owned ? "#FFD700" : (allied ? "#3b82f6" : "#64748b")),
-        weight: selected ? 3 : (owned ? 2.5 : (allied ? 1.5 : 0.6)),
+        fillColor: crisisHit ? "#ef4444" : getColor(id),
+        fillOpacity: owned ? 0.75 : (allied ? 0.55 : (crisisHit ? 0.6 : 0.35)),
+        color: selected ? "#facc15" : (owned ? "#FFD700" : (allied ? "#3b82f6" : (crisisHit ? "#fca5a5" : "#64748b"))),
+        weight: selected ? 3 : (owned ? 2.5 : (allied ? 1.5 : (crisisHit ? 2 : 0.6))),
         opacity: 1
       };
     }
@@ -208,11 +228,16 @@
       let statusClass = "neutral";
       if (c.owner === "You") { status = "OWNED"; statusClass = "owned"; }
       else if (c.owner) { status = "Controlled by " + c.owner; statusClass = "allied"; }
+      let extra = "";
+      if (id === "UKR") extra += "<div class=\"conflict-tag\">LIVE CONFLICT: Russia-Ukraine war ongoing</div>";
+      if (id === "IRN") extra += "<div class=\"conflict-tag\">US-IRAN STANDOFF: sanctions draining economy</div>";
+      if (c.conflict) extra += "<div class=\"conflict-tag\">In conflict: -" + c.conflictLoss + " mil/turn</div>";
       card.innerHTML = "<div class=\"stat-name\">" + c.name + "</div>" +
         "<div class=\"stat-leader\">Leader: " + leader + " | " + gov + "</div>" +
         "<div>GDP: $" + c.gdp + "B | Population: " + (pop >= 1000 ? (pop/1000).toFixed(1) + "B" : pop + "M") + "</div>" +
         "<div>Military: " + c.mil + " | Stability: " + c.stability + "%</div>" +
         "<div class=\"" + statusClass + "\">Status: " + status + "</div>" +
+        extra +
         (c.owner !== "You" && !c.owner ? "<div class=\"claim-cost\">Claim cost: $" + cost + "B</div>" : "");
       card.classList.add("visible");
     }
@@ -227,7 +252,7 @@
           id: id, name: name, mil: Math.round(20 + Math.random() * 80),
           gdp: gdp, stability: Math.round(30 + Math.random() * 50),
           owner: null, pop: pop, budget: startingBudget(gdp, pop),
-          relations: {}, income: 0
+          relations: {}, income: 0, conflict: false, conflictLoss: 0, supportRefill: 0
         };
       }
       layer.on("click", function() {
@@ -266,6 +291,60 @@
       }
     }
 
+    function generateCrisis() {
+      const keys = Object.keys(countries).filter(function(k) { return countries[k].pop > 5; });
+      const center = keys[Math.floor(Math.random() * keys.length)];
+      const ct = crisisTypes[Math.floor(Math.random() * crisisTypes.length)];
+      activeCrisis = {
+        type: ct.type, title: ct.title, desc: ct.desc, center: center,
+        proposal: "Authorize international aid and stabilization force for " + countries[center].name + ".",
+        votes: {}, expires: turn + 1
+      };
+      const banner = document.getElementById("crisis-banner");
+      banner.innerHTML = "<div class=\"crisis-title\">UN CRISIS: " + ct.title + "</div>" +
+        "<div>" + ct.desc + " Centered on " + countries[center].name + ".</div>" +
+        "<div>" + activeCrisis.proposal + "</div>" +
+        "<div class=\"vote-row\">" +
+        "<button onclick=\"voteCrisis('yes')\">Vote YES</button>" +
+        "<button onclick=\"voteCrisis('no')\">Vote NO</button>" +
+        "<button onclick=\"voteCrisis('abstain')\">Abstain</button>" +
+        "</div>";
+      banner.classList.add("visible");
+      log("UN CRISIS declared: " + ct.title + " in " + countries[center].name + ". Security Council may veto.");
+    }
+
+    function voteCrisis(vote) {
+      if (!activeCrisis) return;
+      activeCrisis.votes[playerCountry] = vote;
+      log("You voted " + vote.toUpperCase() + " on the UN resolution.");
+      const banner = document.getElementById("crisis-banner");
+      banner.classList.remove("visible");
+      if (vote === "yes") {
+        const c = countries[activeCrisis.center];
+        c.stability = Math.min(100, c.stability + 10);
+        c.gdp = Math.round(c.gdp * 1.05);
+        log("Resolution passed. " + c.name + " stability and GDP improved.");
+      } else if (vote === "no") {
+        Object.keys(countries).forEach(function(k) {
+          const c = countries[k];
+          if (c.relations[playerCountry]) c.relations[playerCountry] = Math.max(0, c.relations[playerCountry] - 3);
+        });
+        log("Resolution blocked. Minor relation hit with all nations.");
+      }
+      activeCrisis = null;
+      render();
+    }
+
+    function openUN() {
+      if (activeCrisis) {
+        const banner = document.getElementById("crisis-banner");
+        banner.classList.add("visible");
+        log("UN session open. Active crisis: " + activeCrisis.title + " in " + countries[activeCrisis.center].name + ".");
+      } else {
+        log("UN General Assembly convened. No active crises. Security Council: USA, China, Russia, UK, France — any permanent member can veto.");
+      }
+    }
+
     function nextTurn() {
       if (!playerCountry) { log("Select a country first by tapping it on the map."); return; }
       turn++;
@@ -274,13 +353,68 @@
       money += income;
       p.budget += Math.round(income * 0.5);
       log("Turn " + turn + ": Economy generated +$" + income + "B. Total money: $" + money + "B");
+
+      // Russia-Ukraine live conflict
+      const rus = countries["RUS"];
+      const ukr = countries["UKR"];
+      if (rus && ukr) {
+        rus.mil = Math.max(10, rus.mil - 2);
+        rus.stability = Math.max(10, rus.stability - 1);
+        rus.gdp = Math.round(rus.gdp * 0.998);
+        if (Math.random() < 0.6) {
+          ukr.mil = Math.max(5, ukr.mil - 1);
+        }
+        ukr.mil = Math.min(ukr.mil + 2, 60);
+        ukr.budget += 15;
+        rus.conflict = true; ukr.conflict = true;
+        rus.conflictLoss = 2; ukr.conflictLoss = 1;
+      }
+
+      // US-Iran standoff
+      const irn = countries["IRN"];
+      const usa = countries["USA"];
+      if (irn && usa) {
+        irn.gdp = Math.round(irn.gdp * 0.985);
+        irn.stability = Math.max(10, irn.stability - 1);
+        irn.conflict = true; irn.conflictLoss = 1;
+        if (Math.random() < 0.15) {
+          irn.mil = Math.max(10, irn.mil - 3);
+          usa.mil = Math.max(50, usa.mil - 1);
+          log("US-IRAN military flare-up! Iran lost forces, US took minor losses.");
+        }
+      }
+
+      // AI nations act
       Object.keys(countries).forEach(function(k) {
         const c = countries[k];
         if (c.owner !== "You") {
           c.budget += Math.round(c.income || (c.gdp * 0.01));
           if (Math.random() < 0.3) c.mil = Math.round(c.mil * 1.02);
+          if (c.conflict) c.mil = Math.max(5, c.mil - c.conflictLoss);
         }
       });
+
+      // Crisis expiry
+      if (activeCrisis && turn > activeCrisis.expires) {
+        log("UN resolution on " + activeCrisis.title + " expired without action. Slight relation shift.");
+        Object.keys(countries).forEach(function(k) {
+          const c = countries[k];
+          if (c.relations[playerCountry]) c.relations[playerCountry] = Math.max(0, c.relations[playerCountry] - 2);
+        });
+        const c = countries[activeCrisis.center];
+        c.gdp = Math.round(c.gdp * 0.95);
+        c.pop = Math.max(1, Math.round(c.pop * 0.97));
+        activeCrisis = null;
+        document.getElementById("crisis-banner").classList.remove("visible");
+      }
+
+      // New crisis chance
+      crisisCooldown--;
+      if (!activeCrisis && crisisCooldown <= 0 && Math.random() < 0.2) {
+        generateCrisis();
+        crisisCooldown = 5 + Math.floor(Math.random() * 4);
+      }
+
       render();
     }
 
@@ -347,6 +481,7 @@
         geoLayer = L.geoJSON(data, { style: styleFeature, onEachFeature: onEachFeature }).addTo(map);
         map.fitBounds(geoLayer.getBounds());
         log("Map loaded with " + Object.keys(countries).length + " countries. Tap one to start.");
+        log("Russia-Ukraine war is LIVE. US-Iran standoff active. UN crises will appear every 5-8 turns.");
       })
       .catch(function(err) {
         log("Failed to load map data: " + err.message);
