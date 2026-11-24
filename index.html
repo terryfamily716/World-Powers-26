@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Powers 26</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+    #map { height: 70vh; width: 100%; }
+    .controls { padding: 12px 16px; background: #1e293b; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    button { background: #ef4444; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    button:hover { background: #dc2626; }
+    button.blue { background: #3b82f6; }
+    button.green { background: #22c55e; }
+    .player-info { padding: 10px 16px; background: #1e293b; font-size: 14px; border-bottom: 1px solid #334155; }
+    .log { background: #0f172a; border-top: 1px solid #334155; padding: 12px; height: 140px; overflow-y: auto; font-size: 13px; }
+    .version { position: absolute; top: 8px; right: 8px; z-index: 1000; background: rgba(15,23,42,0.85); color: #FFD700; font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 4px; }
+    .leaflet-container { background: #0f172a; }
+  </style>
+</head>
+<body>
+  <div class="version">11.24.26 V0.01</div>
+  <div class="player-info" id="player-info">Select a country on the map to begin.</div>
+  <div id="map"></div>
+  <div class="controls">
+    <button onclick="nextTurn()" class="green">Next Turn</button>
+    <button onclick="investMilitary()" class="blue">Invest in Military</button>
+    <button onclick="attack()">Attack Selected</button>
+    <button onclick="diplomacy()">Diplomacy / Alliance</button>
+    <button onclick="research()">Research Tech</button>
+  </div>
+  <div class="log" id="log">Welcome to World Powers 26. Tap a country to claim it.</div>
+  <script>
+    const GEOJSON_URL = "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson";
+
+    const countries = {};
+    let playerCountry = null;
+    let turn = 1;
+    let money = 1000;
+    let selectedTarget = null;
+    let map, geoLayer;
+
+    const palette = ["#3b82f6","#ef4444","#22c55e","#facc15","#a855f7","#fb923c","#14b8a6","#ec4899","#6366f1","#84cc16","#06b6d4","#f43f5e","#8b5cf6","#d946ef","#0ea5e9","#10b981"];
+
+    function log(msg) {
+      const el = document.getElementById("log");
+      el.innerHTML = msg + "<br>" + el.innerHTML;
+    }
+
+    function getColor(id) {
+      let h = 0;
+      for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % palette.length;
+      return palette[h];
+    }
+
+    function styleFeature(feature) {
+      const id = feature.properties["ISO_A3"] || feature.properties["iso_a3"] || feature.id || feature.properties["name"];
+      const c = countries[id];
+      const owned = c && c.owner === "You";
+      const selected = c && selectedTarget === id;
+      return {
+        fillColor: getColor(id),
+        fillOpacity: owned ? 0.75 : 0.35,
+        color: selected ? "#facc15" : (owned ? "#FFD700" : "#64748b"),
+        weight: selected ? 3 : (owned ? 2.5 : 0.6),
+        opacity: 1
+      };
+    }
+
+    function onEachFeature(feature, layer) {
+      const id = feature.properties["ISO_A3"] || feature.properties["iso_a3"] || feature.id || feature.properties["name"];
+      const name = feature.properties["name"] || id;
+      if (!countries[id]) {
+        countries[id] = { id: id, name: name, mil: 50, gdp: 500, stability: 50, owner: null };
+      }
+      layer.on("click", function() {
+        if (!playerCountry) {
+          start(id);
+        } else {
+          selectedTarget = id;
+          geoLayer.setStyle(styleFeature);
+          log("Selected " + name);
+        }
+      });
+      layer.bindPopup(name);
+    }
+
+    function render() {
+      if (geoLayer) geoLayer.setStyle(styleFeature);
+      if (playerCountry) {
+        const p = countries[playerCountry];
+        document.getElementById("player-info").innerHTML = "Turn " + turn + " | Playing as <strong>" + p.name + "</strong> | Money: $" + money + "B | Military: " + p.mil + " | Stability: " + p.stability + "%";
+      }
+    }
+
+    function start(id) {
+      playerCountry = id;
+      const p = countries[id];
+      p.owner = "You";
+      money = Math.round(p.gdp / 10);
+      if (map) map.flyToBounds(geoLayer.getBounds ? undefined : undefined);
+      log("You now control " + p.name + ". Build your power.");
+      render();
+      if (geoLayer) {
+        const layer = geoLayer.getLayers().find(function(l) {
+          const fid = l.feature.properties["ISO_A3"] || l.feature.properties["iso_a3"] || l.feature.id || l.feature.properties["name"];
+          return fid === id;
+        });
+        if (layer) map.fitBounds(layer.getBounds().pad(0.5));
+      }
+    }
+
+    function nextTurn() {
+      if (!playerCountry) { log("Select a country first by tapping it on the map."); return; }
+      turn++;
+      const p = countries[playerCountry];
+      const income = Math.round(p.gdp * 0.05 * (p.stability / 100));
+      money += income;
+      log("Turn " + turn + ": Economy generated +$" + income + "B. Total money: $" + money + "B");
+      Object.keys(countries).forEach(function(k) {
+        const c = countries[k];
+        if (c.owner !== "You" && Math.random() < 0.3) {
+          c.mil = Math.round(c.mil * 1.02);
+        }
+      });
+      render();
+    }
+
+    function investMilitary() {
+      if (!playerCountry || money < 50) { log("Need a country and at least $50B."); return; }
+      money -= 50;
+      const p = countries[playerCountry];
+      p.mil = Math.round(p.mil * 1.08);
+      log("Invested $50B in military. Power increased.");
+      render();
+    }
+
+    function attack() {
+      if (!playerCountry || !selectedTarget || selectedTarget === playerCountry) { log("Select a different country to attack."); return; }
+      const attacker = countries[playerCountry];
+      const defender = countries[selectedTarget];
+      const atkPower = attacker.mil * (attacker.stability / 100);
+      const defPower = defender.mil * (defender.stability / 100) * 1.2;
+      if (atkPower > defPower * 0.7) {
+        defender.owner = "You";
+        defender.mil = Math.round(defender.mil * 0.6);
+        attacker.mil = Math.round(attacker.mil * 0.85);
+        log("Victory! You captured " + defender.name + ". Losses sustained.");
+      } else {
+        attacker.mil = Math.round(attacker.mil * 0.7);
+        log("Attack on " + defender.name + " failed. Your forces weakened.");
+      }
+      render();
+    }
+
+    function diplomacy() {
+      if (!selectedTarget) { log("Select a country for diplomacy."); return; }
+      const t = countries[selectedTarget];
+      if (Math.random() > 0.5) {
+        t.stability = Math.min(100, t.stability + 5);
+        log("Diplomatic success with " + t.name + ". Relations improved.");
+      } else {
+        log("Diplomacy with " + t.name + " stalled.");
+      }
+      render();
+    }
+
+    function research() {
+      if (money < 100) { log("Need $100B for research."); return; }
+      money -= 100;
+      const p = countries[playerCountry];
+      p.mil = Math.round(p.mil * 1.15);
+      p.stability = Math.min(100, p.stability + 3);
+      log("Research breakthrough! Military and stability boosted.");
+      render();
+    }
+
+    map = L.map("map", { zoomSnap: 0.25, worldCopyJump: true }).setView([20, 0], 2);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+      maxZoom: 18
+    }).addTo(map);
+
+    fetch(GEOJSON_URL)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        geoLayer = L.geoJSON(data, { style: styleFeature, onEachFeature: onEachFeature }).addTo(map);
+        map.fitBounds(geoLayer.getBounds());
+        log("Map loaded with " + Object.keys(countries).length + " countries. Tap one to start.");
+      })
+      .catch(function(err) {
+        log("Failed to load map data: " + err.message);
+      });
+  </script>
+</body>
+</html>
