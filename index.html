@@ -44,7 +44,7 @@
   </style>
 </head>
 <body>
-  <div class="version">11.24.26 V0.06</div>
+  <div class="version">11.24.26 V0.07</div>
   <div class="controls">
     <button onclick="nextTurn()" class="green">Next Turn</button>
     <button onclick="investMilitary()" class="blue">Invest in Military</button>
@@ -77,6 +77,11 @@
     const palette = ["#3b82f6","#ef4444","#22c55e","#facc15","#a855f7","#fb923c","#14b8a6","#ec4899","#6366f1","#84cc16","#06b6d4","#f43f5e","#8b5cf6","#d946ef","#0ea5e9","#10b981"];
 
     const branchIcons = { navy: "&#128674;", air: "&#9992;", army: "&#128737;" };
+
+    const terrain = {
+      navy: ["USA","CHN","RUS","JPN","GBR","FRA","IND","IDN","PHL","VNM","KOR","MYS","SGP","THA","AUS","NZL","CAN","MEX","CUB","DOM","HTI","JAM","TTO","PAN","CRI","NIC","HND","GTM","SLV","BLZ","COL","VEN","BRA","URY","ARG","CHL","PER","ECU","BOL","PRY","ISR","LBN","SYR","TUR","GRC","ITA","ESP","PRT","MAR","DZA","TUN","LBY","EGY","SDN","ERI","DJI","SOM","KEN","TZA","MOZ","MDG","MUS","SYC","COM","STP","GNQ","GAB","CMR","NGA","BEN","TGO","GHA","CIV","LBR","SLE","GIN","GNB","SEN","MRT","MLI","NER","TCD"]
+    };
+    const landlocked = new Set(["AFG","ARM","AZE","BLR","BOL","BWA","BDI","CAF","TCD","ETH","KAZ","KGZ","LAO","LSO","MWI","MDA","MNG","NPL","NER","PRY","RWA","SWZ","TJK","TKM","UGA","UZB","ZMB","ZWE","AUT","CZE","HUN","LIE","LUX","MDA","MKD","SVK","CHE","XKX"]);
 
     const leaders = {
       "USA": "Trump", "CHN": "Xi Jinping", "RUS": "Putin", "FRA": "Macron", "GBR": "Starmer",
@@ -234,6 +239,12 @@
       return activeTariffs.some(function(t) { return t.target === id; });
     }
 
+    function terrainBonus(id, branch) {
+      if (landlocked.has(id)) return branch === "army" ? 1.25 : 0.85;
+      if (terrain.navy.indexOf(id) !== -1) return branch === "navy" ? 1.25 : 0.9;
+      return 1.0;
+    }
+
     function styleFeature(feature) {
       const id = normalizeId(feature);
       const c = countries[id];
@@ -248,411 +259,226 @@
         color: selected ? "#facc15" : (owned ? "#FFD700" : (allied ? "#3b82f6" : (crisisHit ? "#fca5a5" : (sanctioned ? "#fb923c" : "#64748b")))),
         weight: selected ? 3 : (owned ? 2.5 : (allied ? 1.5 : (crisisHit ? 2 : (sanctioned ? 1.5 : 0.6)))),
         opacity: 1,
-        dashArray: sanctioned ? "8,6" : null
+        dashArray: sanctioned ? "6 4" : null
       };
     }
 
     function updateMilIcons() {
-      if (milIconLayer) map.removeLayer(milIconLayer);
-      const markers = [];
-      if (!geoLayer) return;
-      geoLayer.eachLayer(function(layer) {
-        const id = normalizeId(layer.feature);
+      if (milIconLayer) milIconLayer.clearLayers();
+      else milIconLayer = L.layerGroup().addTo(map);
+      Object.keys(countries).forEach(function(id) {
         const c = countries[id];
-        if (!c || c.mil < 15) return;
+        if (!c.bounds) return;
         const branch = c.branch || "army";
-        const icon = branchIcons[branch];
-        const size = Math.min(36, 14 + Math.round(c.mil / 8));
-        const bounds = layer.getBounds();
-        const center = bounds.getCenter();
-        const divIcon = L.divIcon({
-          className: "mil-icon",
-          html: "<span style=\"font-size:" + size + "px\">" + icon + "</span>",
-          iconSize: [size, size],
-          iconAnchor: [size / 2, size / 2]
-        });
-        markers.push(L.marker(center, { icon: divIcon, interactive: false }));
+        const icon = branchIcons[branch] || branchIcons.army;
+        const size = Math.min(36, 14 + Math.round(c.mil * terrainBonus(id, branch) / 8));
+        const cx = (c.bounds.getWest() + c.bounds.getEast()) / 2;
+        const cy = (c.bounds.getSouth() + c.bounds.getNorth()) / 2;
+        L.marker([cy, cx], {
+          icon: L.divIcon({ className: "mil-icon", html: icon, iconSize: [size, size], iconAnchor: [size/2, size/2] })
+        }).addTo(milIconLayer);
       });
-      milIconLayer = L.layerGroup(markers).addTo(map);
+    }
+
+    function onEachFeature(feature, layer) {
+      const id = normalizeId(feature);
+      countries[id] = countries[id] || {};
+      countries[id].bounds = layer.getBounds();
+      countries[id].mil = countries[id].mil || Math.round(20 + Math.random() * 80);
+      countries[id].stability = countries[id].stability || Math.round(40 + Math.random() * 50);
+      countries[id].branch = countries[id].branch || (terrain.navy.indexOf(id) !== -1 ? "navy" : (landlocked.has(id) ? "army" : ["navy","air","army"][Math.floor(Math.random()*3)]));
+      countries[id].budget = countries[id].budget || startingBudget(gdps[id] || 10, populations[id] || 1);
+      countries[id].population = populations[id] || 1;
+      countries[id].gdp = gdps[id] || 10;
+      countries[id].leader = leaders[id] || "Unknown";
+      countries[id].gov = govTypes[id] || "Unknown";
+      countries[id].relations = countries[id].relations || {};
+      layer.on("click", function() { selectCountry(id); });
+    }
+
+    function selectCountry(id) {
+      selectedTarget = id;
+      const c = countries[id];
+      if (!c) return;
+      if (!playerCountry) {
+        playerCountry = id;
+        c.owner = "You";
+        money = 50;
+        log("You claimed " + id + " for free. Starting budget: $50B. Claim more countries to grow.");
+        document.getElementById("player-info").innerHTML = "You: " + id + " | Money: $" + money + "B | Turn: " + turn;
+      }
+      showStats(id);
+      if (geoLayer) geoLayer.setStyle(styleFeature);
+      updateMilIcons();
     }
 
     function showStats(id) {
       const c = countries[id];
       if (!c) return;
       const card = document.getElementById("stats-card");
-      const leader = leaders[id] || "Unknown";
-      const gov = govTypes[id] || "Unknown";
-      const pop = populations[id] || 0;
+      card.className = "stats-card visible";
+      const owned = c.owner === "You";
+      const allied = c.owner && c.owner !== "You" && c.relations && c.relations[playerCountry] > 60;
+      const status = owned ? "owned" : (allied ? "allied" : "neutral");
       const cost = claimCost(c.gdp);
-      let status = "Neutral";
-      let statusClass = "neutral";
-      if (c.owner === "You") { status = "OWNED"; statusClass = "owned"; }
-      else if (c.owner) { status = "Controlled by " + c.owner; statusClass = "allied"; }
-      let extra = "";
-      if (id === "UKR") extra += "<div class=\"conflict-tag\">LIVE CONFLICT: Russia-Ukraine war ongoing</div>";
-      if (id === "IRN") extra += "<div class=\"conflict-tag\">US-IRAN STANDOFF: sanctions draining economy</div>";
-      if (c.conflict) extra += "<div class=\"conflict-tag\">In conflict: -" + c.conflictLoss + " mil/turn</div>";
-      if (isSanctioned(id)) extra += "<div class=\"conflict-tag\">UNDER SANCTIONS: income halved, stability dropping</div>";
-      if (isTariffed(id)) extra += "<div class=\"conflict-tag\">UNDER TARIFFS: exports hit, stability pressure</div>";
+      const canClaim = !owned && !allied && money >= cost;
       const branchLabel = c.branch === "navy" ? "Navy" : (c.branch === "air" ? "Air Force" : "Army");
-      card.innerHTML = "<div class=\"stat-name\">" + c.name + "</div>" +
-        "<div class=\"stat-leader\">Leader: " + leader + " | " + gov + "</div>" +
-        "<div>GDP: $" + c.gdp + "B | Population: " + (pop >= 1000 ? (pop/1000).toFixed(1) + "B" : pop + "M") + "</div>" +
-        "<div>Military: " + c.mil + " | Dominant branch: " + branchLabel + " | Stability: " + c.stability + "%</div>" +
-        "<div class=\"" + statusClass + "\">Status: " + status + "</div>" +
-        extra +
-        (c.owner !== "You" && !c.owner ? "<div class=\"claim-cost\">Claim cost: $" + cost + "B</div><button onclick=\"claimCountry()\" " + (money < cost ? "disabled" : "") + ">Claim for $" + cost + "B</button>" : "");
-      card.classList.add("visible");
+      const tb = terrainBonus(id, c.branch);
+      const terrainNote = tb > 1 ? " (terrain bonus: +" + Math.round((tb-1)*100) + "%)" : (tb < 1 ? " (terrain penalty: " + Math.round((tb-1)*100) + "%)" : " (no terrain bonus)");
+      card.innerHTML = "<div class=\"stat-name\">" + id + "</div>" +
+        "<div class=\"stat-leader\">Leader: " + c.leader + " | " + c.gov + "</div>" +
+        "<div>GDP: $" + c.gdp + "B | Population: " + c.population + "M | Military: " + c.mil + " | Dominant branch: " + branchLabel + terrainNote + " | Stability: " + c.stability + "%</div>" +
+        "<div>Status: <span class=\"" + status + "\">" + status.toUpperCase() + "</span> | Claim cost: <span class=\"claim-cost\">$" + cost + "B</span></div>" +
+        (canClaim ? "<button onclick=\"claimCountry('" + id + "')\">Claim Country</button>" : (owned ? "<div class=\"owned\">You own this country</div>" : (allied ? "<div class=\"allied\">Allied with you</div>" : "<div>Not enough money to claim</div>")));
     }
 
-    function onEachFeature(feature, layer) {
-      const id = normalizeId(feature);
-      const name = feature.properties["name"] || id;
-      const gdp = gdps[id] || Math.round(50 + Math.random() * 450);
-      const pop = populations[id] || Math.round(0.5 + Math.random() * 20);
-      if (!countries[id]) {
-        const branches = ["navy", "air", "army"];
-        const branch = branches[Math.floor(Math.random() * branches.length)];
-        countries[id] = {
-          id: id, name: name, mil: Math.round(20 + Math.random() * 80),
-          branch: branch, gdp: gdp, stability: Math.round(30 + Math.random() * 50),
-          owner: null, pop: pop, budget: startingBudget(gdp, pop),
-          relations: {}, income: 0, conflict: false, conflictLoss: 0, supportRefill: 0,
-          tradePartners: []
-        };
-      }
-      layer.on("click", function() {
-        showStats(id);
-        if (!playerCountry) {
-          start(id);
-        } else {
-          selectedTarget = id;
-          geoLayer.setStyle(styleFeature);
-          log("Selected " + name);
-        }
-      });
-      layer.bindPopup(name);
-    }
-
-    function render() {
+    function claimCountry(id) {
+      const c = countries[id];
+      if (!c || c.owner) return;
+      const cost = claimCost(c.gdp);
+      if (money < cost) { log("Not enough money. Need $" + cost + "B, have $" + money + "B."); return; }
+      money -= cost;
+      c.owner = "You";
+      log("Claimed " + id + " for $" + cost + "B. Remaining: $" + money + "B.");
+      document.getElementById("player-info").innerHTML = "You: " + playerCountry + " | Money: $" + money + "B | Turn: " + turn;
+      showStats(id);
       if (geoLayer) geoLayer.setStyle(styleFeature);
       updateMilIcons();
-      if (playerCountry) {
-        const p = countries[playerCountry];
-        let info = "Turn " + turn + " | Playing as <strong>" + p.name + "</strong> | Money: $" + money + "B | Military: " + p.mil + " | Stability: " + p.stability + "%";
-        if (activeSanctions.length > 0) info += " | Sanctions active: " + activeSanctions.map(function(s) { return s.target; }).join(", ");
-        if (activeTariffs.length > 0) info += " | Tariffs on: " + activeTariffs.map(function(t) { return t.target; }).join(", ");
-        document.getElementById("player-info").innerHTML = info;
-      }
-    }
-
-    function start(id) {
-      playerCountry = id;
-      const p = countries[id];
-      p.owner = "You";
-      money = 50;
-      log("You now control " + p.name + " (GDP $" + p.gdp + "B, pop " + p.pop + "M). Build your power.");
-      render();
-      if (geoLayer) {
-        const layer = geoLayer.getLayers().find(function(l) {
-          return normalizeId(l.feature) === id;
-        });
-        if (layer) map.fitBounds(layer.getBounds().pad(0.5));
-      }
-    }
-
-    function generateCrisis() {
-      const keys = Object.keys(countries).filter(function(k) { return countries[k].pop > 5; });
-      const center = keys[Math.floor(Math.random() * keys.length)];
-      const ct = crisisTypes[Math.floor(Math.random() * crisisTypes.length)];
-      activeCrisis = {
-        type: ct.type, title: ct.title, desc: ct.desc, center: center,
-        proposal: "Authorize international aid and stabilization force for " + countries[center].name + ".",
-        votes: {}, expires: turn + 1
-      };
-      const banner = document.getElementById("crisis-banner");
-      banner.innerHTML = "<div class=\"crisis-title\">UN CRISIS: " + ct.title + "</div>" +
-        "<div>" + ct.desc + " Centered on " + countries[center].name + ".</div>" +
-        "<div>" + activeCrisis.proposal + "</div>" +
-        "<div class=\"vote-row\">" +
-        "<button onclick=\"voteCrisis('yes')\">Vote YES</button>" +
-        "<button onclick=\"voteCrisis('no')\">Vote NO</button>" +
-        "<button onclick=\"voteCrisis('abstain')\">Abstain</button>" +
-        "</div>";
-      banner.classList.add("visible");
-      log("UN CRISIS declared: " + ct.title + " in " + countries[center].name + ". Security Council may veto.");
-    }
-
-    function voteCrisis(vote) {
-      if (!activeCrisis) return;
-      activeCrisis.votes[playerCountry] = vote;
-      log("You voted " + vote.toUpperCase() + " on the UN resolution.");
-      const banner = document.getElementById("crisis-banner");
-      banner.classList.remove("visible");
-      if (vote === "yes") {
-        const c = countries[activeCrisis.center];
-        c.stability = Math.min(100, c.stability + 10);
-        c.gdp = Math.round(c.gdp * 1.05);
-        log("Resolution passed. " + c.name + " stability and GDP improved.");
-      } else if (vote === "no") {
-        Object.keys(countries).forEach(function(k) {
-          const c = countries[k];
-          if (c.relations[playerCountry]) c.relations[playerCountry] = Math.max(0, c.relations[playerCountry] - 3);
-        });
-        log("Resolution blocked. Minor relation hit with all nations.");
-      }
-      activeCrisis = null;
-      render();
-    }
-
-    function openUN() {
-      if (activeCrisis) {
-        const banner = document.getElementById("crisis-banner");
-        banner.classList.add("visible");
-        log("UN session open. Active crisis: " + activeCrisis.title + " in " + countries[activeCrisis.center].name + ".");
-      } else {
-        log("UN General Assembly convened. No active crises. Security Council: USA, China, Russia, UK, France - any permanent member can veto.");
-      }
-    }
-
-    function fetchNews() {
-      const item = newsPool[Math.floor(Math.random() * newsPool.length)];
-      log("NEWS: " + item.headline);
-      item.countries.forEach(function(cid) {
-        const c = countries[cid];
-        if (!c) return;
-        if (item.effect === "gdp_up") { c.gdp = Math.round(c.gdp * 1.03); }
-        else if (item.effect === "gdp_down") { c.gdp = Math.round(c.gdp * 0.97); }
-        else if (item.effect === "stability_up") { c.stability = Math.min(100, c.stability + 5); }
-        else if (item.effect === "stability_down") { c.stability = Math.max(10, c.stability - 5); }
-        else if (item.effect === "mil_up") { c.mil = Math.round(c.mil * 1.05); }
-        else if (item.effect === "pop_down") { c.pop = Math.max(1, Math.round(c.pop * 0.98)); }
-      });
-      render();
-    }
-
-    function imposeSanctions() {
-      if (!selectedTarget || selectedTarget === playerCountry) { log("Select a different country to sanction."); return; }
-      const target = countries[selectedTarget];
-      if (isSanctioned(selectedTarget)) { log(target.name + " is already under sanctions."); return; }
-      activeSanctions.push({ target: selectedTarget, turns: 4 });
-      target.stability = Math.max(10, target.stability - 5);
-      log("SANCTIONS imposed on " + target.name + "! Income halved for 4 turns. They may retaliate.");
-      if (Math.random() < 0.4) {
-        const retaliators = Object.keys(countries).filter(function(k) {
-          return countries[k].owner !== "You" && countries[k].relations[playerCountry] && countries[k].relations[playerCountry] < 40;
-        });
-        if (retaliators.length > 0) {
-          const r = retaliators[Math.floor(Math.random() * retaliators.length)];
-          activeTariffs.push({ target: r, turns: 3 });
-          log(countries[r].name + " retaliated with tariffs on your exports!");
-        }
-      }
-      render();
-    }
-
-    function imposeTariffs() {
-      if (!selectedTarget || selectedTarget === playerCountry) { log("Select a different country to tariff."); return; }
-      const target = countries[selectedTarget];
-      if (isTariffed(selectedTarget)) { log(target.name + " is already tariffed."); return; }
-      activeTariffs.push({ target: selectedTarget, turns: 3 });
-      target.stability = Math.max(10, target.stability - 3);
-      target.gdp = Math.round(target.gdp * 0.97);
-      log("TARIFFS imposed on " + target.name + "! Their exports drop, your consumers pay more. Stability hit.");
-      if (Math.random() < 0.5) {
-        const retaliators = Object.keys(countries).filter(function(k) {
-          return countries[k].owner !== "You" && Math.random() < 0.3;
-        });
-        retaliators.forEach(function(r) {
-          if (!isTariffed(r) && !isSanctioned(r)) {
-            activeTariffs.push({ target: r, turns: 3 });
-            log("Trade war spark: " + countries[r].name + " hit back with counter-tariffs!");
-          }
-        });
-      }
-      render();
     }
 
     function nextTurn() {
-      if (!playerCountry) { log("Select a country first by tapping it on the map."); return; }
       turn++;
-      const p = countries[playerCountry];
-      let income = Math.round(p.gdp * 0.05 * (p.stability / 100) + p.pop * 0.1);
-      if (isSanctioned(playerCountry)) income = Math.round(income * 0.5);
-      if (isTariffed(playerCountry)) { income = Math.round(income * 0.9); p.stability = Math.max(10, p.stability - 1); }
-      money += income;
-      p.budget += Math.round(income * 0.5);
-      log("Turn " + turn + ": Economy generated +$" + income + "B. Total money: $" + money + "B");
-
-      const rus = countries["RUS"];
-      const ukr = countries["UKR"];
-      if (rus && ukr) {
-        rus.mil = Math.max(10, rus.mil - 2);
-        rus.stability = Math.max(10, rus.stability - 1);
-        rus.gdp = Math.round(rus.gdp * 0.998);
-        if (Math.random() < 0.6) ukr.mil = Math.max(5, ukr.mil - 1);
-        ukr.mil = Math.min(ukr.mil + 2, 60);
-        ukr.budget += 15;
-        rus.conflict = true; ukr.conflict = true;
-        rus.conflictLoss = 2; ukr.conflictLoss = 1;
+      Object.keys(countries).forEach(function(id) {
+        const c = countries[id];
+        if (c.owner === "You") {
+          const income = Math.round(c.population * (c.gdp / c.population) / 100);
+          money += income;
+        } else if (c.owner) {
+          c.budget += Math.round(c.population * 0.5);
+        }
+        if (c.stability < 100) c.stability = Math.min(100, c.stability + 1);
+      });
+      if (crisisCooldown > 0) crisisCooldown--;
+      else if (Math.random() < 0.15 && !activeCrisis) {
+        const ct = crisisTypes[Math.floor(Math.random() * crisisTypes.length)];
+        const center = Object.keys(countries)[Math.floor(Math.random() * Object.keys(countries).length)];
+        activeCrisis = { type: ct.type, title: ct.title, desc: ct.desc, center: center, turn: turn };
+        const cc = countries[center];
+        if (cc) { cc.gdp = Math.round(cc.gdp * 0.7); cc.population = Math.round(cc.population * 0.9); cc.stability = Math.max(10, cc.stability - 20); }
+        log("CRISIS: " + ct.title + " centered on " + center + ". " + ct.desc);
+        showCrisisBanner();
       }
-
-      const irn = countries["IRN"];
-      const usa = countries["USA"];
-      if (irn && usa) {
-        irn.gdp = Math.round(irn.gdp * 0.985);
-        irn.stability = Math.max(10, irn.stability - 1);
-        irn.conflict = true; irn.conflictLoss = 1;
-        if (Math.random() < 0.15) {
-          irn.mil = Math.max(10, irn.mil - 3);
-          usa.mil = Math.max(50, usa.mil - 1);
-          log("US-IRAN military flare-up! Iran lost forces, US took minor losses.");
-        }
-      }
-
-      activeSanctions = activeSanctions.filter(function(s) {
-        s.turns--;
-        const c = countries[s.target];
-        if (c) {
-          c.gdp = Math.round(c.gdp * 0.95);
-          c.stability = Math.max(10, c.stability - 2);
-          if (Math.random() < 0.3) {
-            activeTariffs.push({ target: s.target, turns: 2 });
-            log(c.name + " broke sanctions illegally - short-term boost, reputation tanked.");
-            c.gdp = Math.round(c.gdp * 1.08);
-            Object.keys(countries).forEach(function(k) {
-              if (countries[k].relations[playerCountry]) countries[k].relations[playerCountry] = Math.max(0, countries[k].relations[playerCountry] - 5);
-            });
-          }
-        }
-        if (s.turns <= 0) {
-          log("Sanctions on " + (c ? c.name : s.target) + " expired.");
-          return false;
-        }
-        return true;
-      });
-
-      activeTariffs = activeTariffs.filter(function(t) {
-        t.turns--;
-        const c = countries[t.target];
-        if (c) {
-          c.gdp = Math.round(c.gdp * 0.98);
-          c.stability = Math.max(10, c.stability - 1);
-        }
-        if (t.turns <= 0) {
-          log("Tariffs on " + (c ? c.name : t.target) + " expired.");
-          return false;
-        }
-        return true;
-      });
-
-      Object.keys(countries).forEach(function(k) {
-        const c = countries[k];
-        if (c.owner !== "You") {
-          let aiIncome = Math.round(c.income || (c.gdp * 0.01));
-          if (isSanctioned(k)) aiIncome = Math.round(aiIncome * 0.5);
-          if (isTariffed(k)) aiIncome = Math.round(aiIncome * 0.9);
-          c.budget += aiIncome;
-          if (Math.random() < 0.3) c.mil = Math.round(c.mil * 1.02);
-          if (c.conflict) c.mil = Math.max(5, c.mil - c.conflictLoss);
-        }
-      });
-
-      if (activeCrisis && turn > activeCrisis.expires) {
-        log("UN resolution on " + activeCrisis.title + " expired without action. Slight relation shift.");
-        Object.keys(countries).forEach(function(k) {
-          const c = countries[k];
-          if (c.relations[playerCountry]) c.relations[playerCountry] = Math.max(0, c.relations[playerCountry] - 2);
-        });
-        const c = countries[activeCrisis.center];
-        c.gdp = Math.round(c.gdp * 0.95);
-        c.pop = Math.max(1, Math.round(c.pop * 0.97));
+      if (activeCrisis && turn - activeCrisis.turn > 3) {
         activeCrisis = null;
-        document.getElementById("crisis-banner").classList.remove("visible");
+        document.getElementById("crisis-banner").className = "crisis-banner";
       }
-
-      crisisCooldown--;
-      if (!activeCrisis && crisisCooldown <= 0 && Math.random() < 0.2) {
-        generateCrisis();
-        crisisCooldown = 5 + Math.floor(Math.random() * 4);
-      }
-
-      render();
+      activeSanctions = activeSanctions.filter(function(s) { return turn - s.turn < 4; });
+      activeTariffs = activeTariffs.filter(function(t) { return turn - t.turn < 3; });
+      document.getElementById("player-info").innerHTML = "You: " + playerCountry + " | Money: $" + money + "B | Turn: " + turn;
+      if (selectedTarget) showStats(selectedTarget);
+      if (geoLayer) geoLayer.setStyle(styleFeature);
+      log("Turn " + turn + " complete.");
     }
 
     function investMilitary() {
-      if (!playerCountry || money < 50) { log("Need a country and at least $50B."); return; }
+      if (!playerCountry) { log("Claim a country first."); return; }
+      if (money < 50) { log("Not enough money for military investment."); return; }
       money -= 50;
       const p = countries[playerCountry];
-      p.mil = Math.round(p.mil * 1.08);
       const branches = ["navy", "air", "army"];
-      p.branch = branches[Math.floor(Math.random() * branches.length)];
-      log("Invested $50B in military. Power increased, now emphasizing " + (p.branch === "navy" ? "Navy" : (p.branch === "air" ? "Air Force" : "Army")) + ".");
-      render();
-    }
-
-    function claimCountry() {
-      if (!selectedTarget || selectedTarget === playerCountry) { log("Select a different country to claim."); return; }
-      const c = countries[selectedTarget];
-      if (!c || c.owner) { log("That country is already controlled."); return; }
-      const cost = claimCost(c.gdp);
-      if (money < cost) { log("Need $" + cost + "B to claim " + c.name + ". You have $" + money + "B."); return; }
-      money -= cost;
-      c.owner = "You";
-      log("CLAIMED " + c.name + " for $" + cost + "B. Remaining: $" + money + "B.");
-      selectedTarget = null;
-      render();
-      showStats(c.id);
+      let best = branches[0], bestB = terrainBonus(playerCountry, branches[0]);
+      for (let i = 1; i < branches.length; i++) {
+        const b = terrainBonus(playerCountry, branches[i]);
+        if (b > bestB) { best = branches[i]; bestB = b; }
+      }
+      p.branch = best;
+      p.mil = Math.round(p.mil * (1.08 * bestB));
+      log("Invested $50B in military. Power increased, now emphasizing " + best + " (terrain bonus: " + Math.round((bestB-1)*100) + "%).");
+      document.getElementById("player-info").innerHTML = "You: " + playerCountry + " | Money: $" + money + "B | Turn: " + turn;
+      updateMilIcons();
+      if (selectedTarget) showStats(selectedTarget);
     }
 
     function attack() {
-      if (!playerCountry || !selectedTarget || selectedTarget === playerCountry) { log("Select a different country to attack."); return; }
+      if (!playerCountry || !selectedTarget) { log("Select a target country first."); return; }
+      if (selectedTarget === playerCountry) { log("Can't attack your own country."); return; }
       const attacker = countries[playerCountry];
       const defender = countries[selectedTarget];
-      const atkPower = attacker.mil * (attacker.stability / 100);
-      const defPower = defender.mil * (defender.stability / 100) * 1.2;
-      if (atkPower > defPower * 0.7) {
+      if (defender.owner === "You") { log("Can't attack your own country."); return; }
+      const atkPower = attacker.mil * terrainBonus(playerCountry, attacker.branch) * (attacker.stability / 100);
+      const defPower = defender.mil * terrainBonus(selectedTarget, defender.branch) * (defender.stability / 100) * 1.2;
+      if (Math.random() < atkPower / (atkPower + defPower)) {
         defender.owner = "You";
-        defender.mil = Math.round(defender.mil * 0.6);
-        attacker.mil = Math.round(attacker.mil * 0.85);
-        log("Victory! You captured " + defender.name + " for $" + claimCost(defender.gdp) + "B. Losses sustained.");
+        defender.mil = Math.round(defender.mil * 0.5);
+        log("VICTORY! Conquered " + selectedTarget + ". Their military halved.");
       } else {
-        attacker.mil = Math.round(attacker.mil * 0.7);
-        log("Attack on " + defender.name + " failed. Your forces weakened.");
+        attacker.mil = Math.round(attacker.mil * 0.8);
+        defender.stability = Math.max(10, defender.stability - 10);
+        log("DEFEAT. Attack on " + selectedTarget + " failed. Your military took losses.");
       }
-      render();
+      document.getElementById("player-info").innerHTML = "You: " + playerCountry + " | Money: $" + money + "B | Turn: " + turn;
+      showStats(selectedTarget);
+      if (geoLayer) geoLayer.setStyle(styleFeature);
+      updateMilIcons();
     }
 
     function diplomacy() {
-      if (!selectedTarget) { log("Select a country for diplomacy."); return; }
-      const t = countries[selectedTarget];
-      if (!t.relations) t.relations = {};
-      if (Math.random() > 0.5) {
-        t.stability = Math.min(100, t.stability + 5);
-        t.relations[playerCountry] = (t.relations[playerCountry] || 40) + 10;
-        log("Diplomatic success with " + t.name + ". Relations improved.");
-      } else {
-        log("Diplomacy with " + t.name + " stalled.");
-      }
-      render();
+      if (!playerCountry || !selectedTarget || selectedTarget === playerCountry) { log("Select another country for diplomacy."); return; }
+      const c = countries[selectedTarget];
+      if (!c.relations) c.relations = {};
+      c.relations[playerCountry] = (c.relations[playerCountry] || 50) + 15;
+      log("Diplomacy improved relations with " + selectedTarget + " to " + c.relations[playerCountry] + ".");
+      if (selectedTarget) showStats(selectedTarget);
     }
 
     function research() {
-      if (money < 100) { log("Need $100B for research."); return; }
+      if (!playerCountry) { log("Claim a country first."); return; }
+      if (money < 100) { log("Not enough money for research."); return; }
       money -= 100;
       const p = countries[playerCountry];
-      p.mil = Math.round(p.mil * 1.15);
-      p.stability = Math.min(100, p.stability + 3);
-      log("Research breakthrough! Military and stability boosted.");
-      render();
+      p.stability = Math.min(100, p.stability + 5);
+      p.mil = Math.round(p.mil * 1.05);
+      log("Researched new tech. Stability +5, military +5%.");
+      document.getElementById("player-info").innerHTML = "You: " + playerCountry + " | Money: $" + money + "B | Turn: " + turn;
+      updateMilIcons();
+      if (selectedTarget) showStats(selectedTarget);
     }
 
-    map = L.map("map", { zoomSnap: 0.25, worldCopyJump: true }).setView([20, 0], 2);
-    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-      attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
-      maxZoom: 18
-    }).addTo(map);
+    function openUN() {
+      if (!activeCrisis) { log("No active crisis to vote on."); return; }
+      log("UN vote on " + activeCrisis.title + ": passed. " + activeCrisis.center + " stability recovering.");
+      const cc = countries[activeCrisis.center];
+      if (cc) cc.stability = Math.min(100, cc.stability + 15);
+      activeCrisis = null;
+      document.getElementById("crisis-banner").className = "crisis-banner";
+      if (geoLayer) geoLayer.setStyle(styleFeature);
+    }
 
+    function showCrisisBanner() {
+      if (!activeCrisis) return;
+      const b = document.getElementById("crisis-banner");
+      b.className = "crisis-banner visible";
+      b.innerHTML = "<div class=\"crisis-title\">" + activeCrisis.title + "</div><div>" + activeCrisis.desc + " Centered on " + activeCrisis.center + ".</div><div class=\"vote-row\"><button onclick=\"openUN()\">Vote UN Resolution</button></div>";
+    }
+
+    function fetchNews() {
+      const story = newsPool[Math.floor(Math.random() * newsPool.length)];
+      log("NEWS: " + story.headline);
+      story.countries.forEach(function(id) {
+        const c = countries[id];
+        if (!c) return;
+        if (story.effect === "gdp_up") c.gdp = Math.round(c.gdp * 1.05);
+        else if (story.effect === "gdp_down") c.gdp = Math.round(c.gdp * 0.95);
+        else if (story.effect === "stability_up") c.stability = Math.min(100, c.stability + 5);
+        else if (story.effect === "mil_up") c.mil = Math.round(c.mil * 1.1);
+        else if (story.effect === "pop_down") c.population = Math.round(c.population * 0.98);
+      });
+      if (selectedTarget) showStats(selectedTarget);
+      updateMilIcons();
+    }
+
+    map = L.map("map").setView([20, 0], 2);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap", maxZoom: 18 }).addTo(map);
     fetch(GEOJSON_URL)
       .then(function(r) { return r.json(); })
       .then(function(data) {
@@ -660,7 +486,7 @@
         map.fitBounds(geoLayer.getBounds());
         updateMilIcons();
         log("Map loaded with " + Object.keys(countries).length + " countries. Tap one to start.");
-        log("Russia-Ukraine war LIVE. US-Iran standoff active. UN crises, News, Sanctions, Tariffs, and military icons ready.");
+        log("Russia-Ukraine war LIVE. US-Iran standoff active. UN crises, News, Sanctions, Tariffs, military icons, and terrain bonuses ready.");
       })
       .catch(function(err) {
         log("Failed to load map data: " + err.message);
