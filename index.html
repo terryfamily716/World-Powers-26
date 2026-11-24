@@ -9,22 +9,29 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
-    #map { height: 70vh; width: 100%; }
-    .controls { padding: 12px 16px; background: #1e293b; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    button { background: #ef4444; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    #map { height: 65vh; width: 100%; }
+    .controls { padding: 10px 12px; background: #1e293b; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid #334155; }
+    button { background: #ef4444; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px; }
     button:hover { background: #dc2626; }
     button.blue { background: #3b82f6; }
     button.green { background: #22c55e; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
     .player-info { padding: 10px 16px; background: #1e293b; font-size: 14px; border-bottom: 1px solid #334155; }
-    .log { background: #0f172a; border-top: 1px solid #334155; padding: 12px; height: 140px; overflow-y: auto; font-size: 13px; }
+    .stats-card { display: none; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px 16px; margin: 10px 12px; font-size: 13px; line-height: 1.7; }
+    .stats-card.visible { display: block; }
+    .stats-card .stat-name { font-size: 18px; font-weight: 700; color: #facc15; }
+    .stats-card .stat-leader { color: #94a3b8; font-style: italic; }
+    .stats-card .owned { color: #22c55e; }
+    .stats-card .allied { color: #3b82f6; }
+    .stats-card .neutral { color: #94a3b8; }
+    .log { background: #0f172a; border-top: 1px solid #334155; padding: 12px; height: 120px; overflow-y: auto; font-size: 13px; }
     .version { position: absolute; top: 8px; right: 8px; z-index: 1000; background: rgba(15,23,42,0.85); color: #FFD700; font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 4px; }
     .leaflet-container { background: #0f172a; }
+    .claim-cost { color: #fb923c; font-weight: 600; }
   </style>
 </head>
 <body>
-  <div class="version">11.24.26 V0.01</div>
-  <div class="player-info" id="player-info">Select a country on the map to begin.</div>
-  <div id="map"></div>
+  <div class="version">11.24.26 V0.02</div>
   <div class="controls">
     <button onclick="nextTurn()" class="green">Next Turn</button>
     <button onclick="investMilitary()" class="blue">Invest in Military</button>
@@ -32,6 +39,9 @@
     <button onclick="diplomacy()">Diplomacy / Alliance</button>
     <button onclick="research()">Research Tech</button>
   </div>
+  <div class="player-info" id="player-info">Select a country on the map to begin.</div>
+  <div class="stats-card" id="stats-card"></div>
+  <div id="map"></div>
   <div class="log" id="log">Welcome to World Powers 26. Tap a country to claim it.</div>
   <script>
     const GEOJSON_URL = "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson";
@@ -45,6 +55,108 @@
 
     const palette = ["#3b82f6","#ef4444","#22c55e","#facc15","#a855f7","#fb923c","#14b8a6","#ec4899","#6366f1","#84cc16","#06b6d4","#f43f5e","#8b5cf6","#d946ef","#0ea5e9","#10b981"];
 
+    const leaders = {
+      "USA": "Trump", "CHN": "Xi Jinping", "RUS": "Putin", "FRA": "Macron", "GBR": "Starmer",
+      "IND": "Modi", "BRA": "Lula", "JPN": "Takaichi", "DEU": "Merz", "CAN": "Carney",
+      "AUS": "Albanese", "MEX": "Sheinbaum", "KOR": "Lee Jae-myung", "ITA": "Meloni",
+      "ESP": "Sanchez", "TUR": "Erdogan", "IDN": "Prabowo", "SAU": "MBS", "IRN": "Khamenei",
+      "PAK": "Shehbaz Sharif", "NGA": "Tinubu", "EGY": "Sisi", "ARG": "Milei", "ZAF": "Ramaphosa",
+      "UKR": "Zelensky", "POL": "Tusk", "NLD": "Schoof", "SWE": "Kristersson", "NOR": "Store",
+      "DNK": "Frederiksen", "FIN": "Stubb", "CHE": "Keller-Sutter", "AUT": "Stocker", "BEL": "De Wever",
+      "PRT": "Montenegro", "GRC": "Mitsotakis", "CZE": "Pavel", "ROU": "Dan", "HUN": "Orban",
+      "ISR": "Netanyahu", "ARE": "MBZ", "QAT": "Tamim", "KWT": "Mishal", "OMN": "Haitham",
+      "JOR": "Abdullah II", "LBN": "Aoun", "SYR": "Ahmed al-Sharaa", "IRQ": "Sudani", "AFG": "Taliban",
+      "THA": "Paetongtarn", "VNM": "To Lam", "MYS": "Anwar", "PHL": "Marcos", "SGP": "Wong",
+      "NZL": "Luxon", "CHL": "Boric", "COL": "Petro", "PER": "Jerí", "VEN": "Maduro",
+      "CUB": "Diaz-Canel", "PRY": "Pena", "BOL": "Arce", "URY": "Orsi", "ECU": "Noboa",
+      "GTM": "Arévalo", "HND": "Castro", "SLV": "Bukele", "NIC": "Ortega", "CRI": "Chaves",
+      "PAN": "Mulino", "DOM": "Abinader", "HTI": "Transitional", "JAM": "Holness", "TTO": "Rowley",
+      "BLR": "Lukashenko", "KAZ": "Tokayev", "UZB": "Mirziyoyev", "TKM": "Berdymukhamedov",
+      "KGZ": "Japarov", "TJK": "Rahmon", "MNG": "Ukhnaagiin", "MMR": "Min Aung Hlaing",
+      "KHM": "Hun Manet", "LAO": "Thongloun", "NPL": "Oli", "BTN": "Jigme Khesar", "LKA": "Dissanayake",
+      "BGD": "Yunus", "NPL": "Oli", "MDV": "Muizzu", "BRN": "Hassanal Bolkiah", "TLS": "Rama-Horta",
+      "FJI": "Rabuka", "PNG": "Marape", "SLB": "Sogavare", "VUT": "Loughman", "WSM": "Laaulialemalietoa",
+      "TON": "Tupou VI", "KIR": "Taneti", "TUV": "Feleti", "NRU": "Adeang", "PLW": "Whipps",
+      "FSM": "Simina", "MHL": "Heine", "COK": "Brown", "NIU": "Talagi", "TKL": "Feleti"
+    };
+
+    const govTypes = {
+      "USA": "Federal Republic", "CHN": "One-Party State", "RUS": "Federal Semi-Presidential",
+      "FRA": "Semi-Presidential Republic", "GBR": "Constitutional Monarchy", "IND": "Federal Parliamentary Republic",
+      "BRA": "Federal Presidential Republic", "JPN": "Constitutional Monarchy", "DEU": "Federal Parliamentary Republic",
+      "CAN": "Federal Parliamentary Monarchy", "AUS": "Federal Parliamentary Monarchy", "MEX": "Federal Presidential Republic",
+      "KOR": "Presidential Republic", "ITA": "Parliamentary Republic", "ESP": "Parliamentary Monarchy",
+      "TUR": "Presidential Republic", "IDN": "Presidential Republic", "SAU": "Absolute Monarchy",
+      "IRN": "Theocratic Republic", "PAK": "Federal Parliamentary Republic", "NGA": "Federal Presidential Republic",
+      "EGY": "Presidential Republic", "ARG": "Federal Presidential Republic", "ZAF": "Parliamentary Republic",
+      "UKR": "Semi-Presidential Republic", "POL": "Parliamentary Republic", "NLD": "Constitutional Monarchy",
+      "SWE": "Constitutional Monarchy", "NOR": "Constitutional Monarchy", "DNK": "Constitutional Monarchy",
+      "FIN": "Parliamentary Republic", "CHE": "Federal Direct Democracy", "AUT": "Federal Parliamentary Republic",
+      "BEL": "Federal Parliamentary Monarchy", "PRT": "Semi-Presidential Republic", "GRC": "Parliamentary Republic",
+      "CZE": "Parliamentary Republic", "ROU": "Semi-Presidential Republic", "HUN": "Parliamentary Republic",
+      "ISR": "Parliamentary Republic", "ARE": "Federal Absolute Monarchy", "QAT": "Absolute Monarchy",
+      "KWT": "Constitutional Monarchy", "OMN": "Absolute Monarchy", "JOR": "Constitutional Monarchy",
+      "LBN": "Parliamentary Republic", "SYR": "Transitional Republic", "IRQ": "Parliamentary Republic",
+      "AFG": "Taliban Emirate", "THA": "Constitutional Monarchy", "VNM": "One-Party State",
+      "MYS": "Federal Parliamentary Monarchy", "PHL": "Presidential Republic", "SGP": "Parliamentary Republic",
+      "NZL": "Parliamentary Monarchy", "CHL": "Presidential Republic", "COL": "Presidential Republic",
+      "PER": "Presidential Republic", "VEN": "United Socialist Republic", "CUB": "One-Party State",
+      "PRY": "Presidential Republic", "BOL": "Presidential Republic", "URY": "Presidential Republic",
+      "ECU": "Presidential Republic", "GTM": "Presidential Republic", "HND": "Presidential Republic",
+      "SLV": "Presidential Republic", "NIC": "Sandinista Republic", "CRI": "Presidential Republic",
+      "PAN": "Presidential Republic", "DOM": "Presidential Republic", "HTI": "Transitional Government",
+      "JAM": "Parliamentary Monarchy", "TTO": "Parliamentary Republic", "BLR": "Presidential Republic",
+      "KAZ": "Presidential Republic", "UZB": "Presidential Republic", "TKM": "Presidential Republic",
+      "KGZ": "Parliamentary Republic", "TJK": "Presidential Republic", "MNG": "Parliamentary Republic",
+      "MMR": "Military Junta", "KHM": "Constitutional Monarchy", "LAO": "One-Party State",
+      "NPL": "Federal Parliamentary Republic", "BTN": "Constitutional Monarchy", "LKA": "Presidential Republic",
+      "BGD": "Interim Government", "MDV": "Presidential Republic", "BRN": "Absolute Monarchy",
+      "TLS": "Semi-Presidential Republic", "FJI": "Parliamentary Republic", "PNG": "Parliamentary Monarchy",
+      "SLB": "Parliamentary Monarchy", "VUT": "Parliamentary Republic", "WSM": "Parliamentary Republic",
+      "TON": "Constitutional Monarchy", "KIR": "Presidential Republic", "TUV": "Parliamentary Monarchy",
+      "NRU": "Parliamentary Republic", "PLW": "Presidential Republic", "FSM": "Federal Republic",
+      "MHL": "Presidential Republic", "COK": "Parliamentary Republic", "NIU": "Self-Governing", "TKL": "Self-Governing"
+    };
+
+    const populations = {
+      "USA": 335, "CHN": 1410, "IND": 1430, "RUS": 144, "JPN": 124, "DEU": 84, "BRA": 216, "GBR": 68,
+      "FRA": 68, "ITA": 59, "CAN": 40, "MEX": 130, "KOR": 52, "ESP": 48, "AUS": 26, "TUR": 86,
+      "IDN": 278, "NGA": 225, "PAK": 240, "EGY": 112, "IRN": 90, "VNM": 98, "PHL": 115, "THA": 71,
+      "MYS": 34, "SAU": 37, "ZAF": 62, "ARG": 46, "COL": 52, "UKR": 38, "POL": 38, "DZA": 46,
+      "SDN": 48, "MAR": 38, "AGO": 36, "ETH": 126, "TZA": 67, "KEN": 55, "UGA": 48, "GHA": 34,
+      "MOZ": 33, "MDG": 30, "CMR": 28, "CIV": 29, "NER": 26, "BFA": 23, "MLI": 23, "MWI": 21,
+      "ZMB": 20, "SEN": 18, "TCD": 18, "SOM": 18, "ZWE": 16, "GIN": 14, "RWA": 14, "BEN": 13,
+      "TUN": 12, "BOL": 12, "CUB": 11, "HTI": 11, "DOM": 11, "HND": 10, "GTM": 17, "ECU": 18,
+      "PER": 34, "VEN": 29, "CHL": 19, "PRT": 10, "NLD": 18, "BEL": 12, "GRC": 10, "CZE": 11,
+      "ROU": 19, "HUN": 10, "SWE": 10, "NOR": 5.5, "DNK": 5.9, "FIN": 5.6, "CHE": 8.8, "AUT": 9,
+      "IRL": 5.2, "NZL": 5.2, "ISR": 9.8, "ARE": 9.5, "QAT": 2.9, "KWT": 4.3, "OMN": 4.6, "JOR": 11,
+      "LBN": 5.5, "SYR": 23, "IRQ": 44, "AFG": 41, "MMR": 54, "KHM": 17, "LAO": 7.5, "NPL": 30,
+      "BTN": 0.78, "LKA": 22, "BGD": 172, "MDV": 0.52, "BRN": 0.45, "TLS": 1.3, "FJI": 0.93,
+      "PNG": 10, "SLB": 0.72, "VUT": 0.33, "WSM": 0.22, "TON": 0.11, "KIR": 0.13, "TUV": 0.011,
+      "NRU": 0.012, "PLW": 0.018, "FSM": 0.115, "MHL": 0.042, "COK": 0.015, "NIU": 0.0017, "TKL": 0.0015,
+      "BLR": 9.2, "KAZ": 19.5, "UZB": 35, "TKM": 6.4, "KGZ": 6.7, "TJK": 10, "MNG": 3.4,
+      "PRY": 6.9, "URY": 3.4, "CRI": 5.2, "PAN": 4.4, "SLV": 6.3, "NIC": 6.8, "JAM": 2.8,
+      "TTO": 1.4, "BLZ": 0.41, "SUR": 0.62, "GUY": 0.80, "LUX": 0.66, "MLT": 0.54, "CYP": 1.2,
+      "EST": 1.3, "LVA": 1.9, "LTU": 2.8, "SVN": 2.1, "SVK": 5.4, "HRV": 3.9, "BIH": 3.2,
+      "SRB": 6.6, "MNE": 0.62, "MKD": 2.1, "ALB": 2.8, "XKX": 1.8, "MDA": 2.6, "GEO": 3.7,
+      "ARM": 3.0, "AZE": 10.1, "GEO": 3.7
+    };
+
+    const gdps = {
+      "USA": 29000, "CHN": 18000, "JPN": 4100, "DEU": 4600, "IND": 3900, "GBR": 3500, "FRA": 3000,
+      "ITA": 2300, "BRA": 2200, "CAN": 2200, "RUS": 2000, "KOR": 1800, "MEX": 1800, "AUS": 1700,
+      "ESP": 1600, "IDN": 1400, "NLD": 1100, "TUR": 1100, "SAU": 1100, "CHE": 950, "POL": 850,
+      "ARG": 640, "SWE": 610, "BEL": 650, "IRL": 550, "NOR": 500, "AUT": 520, "ISR": 530, "THA": 510,
+      "ARE": 510, "NGA": 400, "EGY": 390, "DNK": 410, "SGP": 500, "PHL": 440, "MYS": 440, "HKG": 410,
+      "VNM": 430, "BGD": 450, "PAK": 340, "CHL": 330, "FIN": 300, "CZ E": 330, "ROU": 350, "NZL": 250,
+      "PER": 270, "QAT": 240, "KZ A": 290, "PRT": 290, "GRC": 250, "ALG": 270, "KWT": 160, "HUN": 210,
+      "UKR": 160, "MAR": 150, "COL": 420, "ZAF": 380, "IRL": 550
+    };
+
+    function normalizeId(feature) {
+      return feature.properties["ISO_A3"] || feature.properties["iso_a3"] || feature.id || feature.properties["name"];
+    }
+
     function log(msg) {
       const el = document.getElementById("log");
       el.innerHTML = msg + "<br>" + el.innerHTML;
@@ -56,27 +168,70 @@
       return palette[h];
     }
 
+    function claimCost(gdp) {
+      if (gdp < 500) return 50;
+      if (gdp < 2000) return 200;
+      if (gdp < 5000) return 350;
+      return 500;
+    }
+
+    function startingBudget(gdp, pop) {
+      const base = Math.round(gdp * 0.02);
+      const popBonus = Math.round(pop * 2);
+      return Math.max(30, base + popBonus);
+    }
+
     function styleFeature(feature) {
-      const id = feature.properties["ISO_A3"] || feature.properties["iso_a3"] || feature.id || feature.properties["name"];
+      const id = normalizeId(feature);
       const c = countries[id];
       const owned = c && c.owner === "You";
+      const allied = c && c.owner && c.owner !== "You" && c.relations && c.relations[playerCountry] > 60;
       const selected = c && selectedTarget === id;
       return {
         fillColor: getColor(id),
-        fillOpacity: owned ? 0.75 : 0.35,
-        color: selected ? "#facc15" : (owned ? "#FFD700" : "#64748b"),
-        weight: selected ? 3 : (owned ? 2.5 : 0.6),
+        fillOpacity: owned ? 0.75 : (allied ? 0.55 : 0.35),
+        color: selected ? "#facc15" : (owned ? "#FFD700" : (allied ? "#3b82f6" : "#64748b")),
+        weight: selected ? 3 : (owned ? 2.5 : (allied ? 1.5 : 0.6)),
         opacity: 1
       };
     }
 
+    function showStats(id) {
+      const c = countries[id];
+      if (!c) return;
+      const card = document.getElementById("stats-card");
+      const leader = leaders[id] || "Unknown";
+      const gov = govTypes[id] || "Unknown";
+      const pop = populations[id] || 0;
+      const cost = claimCost(c.gdp);
+      let status = "Neutral";
+      let statusClass = "neutral";
+      if (c.owner === "You") { status = "OWNED"; statusClass = "owned"; }
+      else if (c.owner) { status = "Controlled by " + c.owner; statusClass = "allied"; }
+      card.innerHTML = "<div class=\"stat-name\">" + c.name + "</div>" +
+        "<div class=\"stat-leader\">Leader: " + leader + " | " + gov + "</div>" +
+        "<div>GDP: $" + c.gdp + "B | Population: " + (pop >= 1000 ? (pop/1000).toFixed(1) + "B" : pop + "M") + "</div>" +
+        "<div>Military: " + c.mil + " | Stability: " + c.stability + "%</div>" +
+        "<div class=\"" + statusClass + "\">Status: " + status + "</div>" +
+        (c.owner !== "You" && !c.owner ? "<div class=\"claim-cost\">Claim cost: $" + cost + "B</div>" : "");
+      card.classList.add("visible");
+    }
+
     function onEachFeature(feature, layer) {
-      const id = feature.properties["ISO_A3"] || feature.properties["iso_a3"] || feature.id || feature.properties["name"];
+      const id = normalizeId(feature);
       const name = feature.properties["name"] || id;
+      const gdp = gdps[id] || Math.round(50 + Math.random() * 450);
+      const pop = populations[id] || Math.round(0.5 + Math.random() * 20);
       if (!countries[id]) {
-        countries[id] = { id: id, name: name, mil: 50, gdp: 500, stability: 50, owner: null };
+        countries[id] = {
+          id: id, name: name, mil: Math.round(20 + Math.random() * 80),
+          gdp: gdp, stability: Math.round(30 + Math.random() * 50),
+          owner: null, pop: pop, budget: startingBudget(gdp, pop),
+          relations: {}, income: 0
+        };
       }
       layer.on("click", function() {
+        showStats(id);
         if (!playerCountry) {
           start(id);
         } else {
@@ -101,13 +256,11 @@
       const p = countries[id];
       p.owner = "You";
       money = Math.round(p.gdp / 10);
-      if (map) map.flyToBounds(geoLayer.getBounds ? undefined : undefined);
-      log("You now control " + p.name + ". Build your power.");
+      log("You now control " + p.name + " (GDP $" + p.gdp + "B, pop " + p.pop + "M). Build your power.");
       render();
       if (geoLayer) {
         const layer = geoLayer.getLayers().find(function(l) {
-          const fid = l.feature.properties["ISO_A3"] || l.feature.properties["iso_a3"] || l.feature.id || l.feature.properties["name"];
-          return fid === id;
+          return normalizeId(l.feature) === id;
         });
         if (layer) map.fitBounds(layer.getBounds().pad(0.5));
       }
@@ -117,13 +270,15 @@
       if (!playerCountry) { log("Select a country first by tapping it on the map."); return; }
       turn++;
       const p = countries[playerCountry];
-      const income = Math.round(p.gdp * 0.05 * (p.stability / 100));
+      const income = Math.round(p.gdp * 0.05 * (p.stability / 100) + p.pop * 0.1);
       money += income;
+      p.budget += Math.round(income * 0.5);
       log("Turn " + turn + ": Economy generated +$" + income + "B. Total money: $" + money + "B");
       Object.keys(countries).forEach(function(k) {
         const c = countries[k];
-        if (c.owner !== "You" && Math.random() < 0.3) {
-          c.mil = Math.round(c.mil * 1.02);
+        if (c.owner !== "You") {
+          c.budget += Math.round(c.income || (c.gdp * 0.01));
+          if (Math.random() < 0.3) c.mil = Math.round(c.mil * 1.02);
         }
       });
       render();
@@ -148,7 +303,7 @@
         defender.owner = "You";
         defender.mil = Math.round(defender.mil * 0.6);
         attacker.mil = Math.round(attacker.mil * 0.85);
-        log("Victory! You captured " + defender.name + ". Losses sustained.");
+        log("Victory! You captured " + defender.name + " for $" + claimCost(defender.gdp) + "B. Losses sustained.");
       } else {
         attacker.mil = Math.round(attacker.mil * 0.7);
         log("Attack on " + defender.name + " failed. Your forces weakened.");
@@ -159,8 +314,10 @@
     function diplomacy() {
       if (!selectedTarget) { log("Select a country for diplomacy."); return; }
       const t = countries[selectedTarget];
+      if (!t.relations) t.relations = {};
       if (Math.random() > 0.5) {
         t.stability = Math.min(100, t.stability + 5);
+        t.relations[playerCountry] = (t.relations[playerCountry] || 40) + 10;
         log("Diplomatic success with " + t.name + ". Relations improved.");
       } else {
         log("Diplomacy with " + t.name + " stalled.");
