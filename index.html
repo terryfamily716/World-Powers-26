@@ -40,10 +40,11 @@
     .claim-cost { color: #fb923c; font-weight: 600; }
     .conflict-tag { color: #f87171; font-weight: 700; }
     .sanctioned { text-decoration: line-through; color: #fb923c; }
+    .mil-icon { font-size: 18px; line-height: 1; text-shadow: 0 0 4px rgba(0,0,0,0.9); pointer-events: none; user-select: none; }
   </style>
 </head>
 <body>
-  <div class="version">11.24.26 V0.05</div>
+  <div class="version">11.24.26 V0.06</div>
   <div class="controls">
     <button onclick="nextTurn()" class="green">Next Turn</button>
     <button onclick="investMilitary()" class="blue">Invest in Military</button>
@@ -67,13 +68,15 @@
     let turn = 1;
     let money = 50;
     let selectedTarget = null;
-    let map, geoLayer;
+    let map, geoLayer, milIconLayer;
     let activeCrisis = null;
     let crisisCooldown = 0;
     let activeSanctions = [];
     let activeTariffs = [];
 
     const palette = ["#3b82f6","#ef4444","#22c55e","#facc15","#a855f7","#fb923c","#14b8a6","#ec4899","#6366f1","#84cc16","#06b6d4","#f43f5e","#8b5cf6","#d946ef","#0ea5e9","#10b981"];
+
+    const branchIcons = { navy: "&#128674;", air: "&#9992;", army: "&#128737;" };
 
     const leaders = {
       "USA": "Trump", "CHN": "Xi Jinping", "RUS": "Putin", "FRA": "Macron", "GBR": "Starmer",
@@ -249,6 +252,30 @@
       };
     }
 
+    function updateMilIcons() {
+      if (milIconLayer) map.removeLayer(milIconLayer);
+      const markers = [];
+      if (!geoLayer) return;
+      geoLayer.eachLayer(function(layer) {
+        const id = normalizeId(layer.feature);
+        const c = countries[id];
+        if (!c || c.mil < 15) return;
+        const branch = c.branch || "army";
+        const icon = branchIcons[branch];
+        const size = Math.min(36, 14 + Math.round(c.mil / 8));
+        const bounds = layer.getBounds();
+        const center = bounds.getCenter();
+        const divIcon = L.divIcon({
+          className: "mil-icon",
+          html: "<span style=\"font-size:" + size + "px\">" + icon + "</span>",
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2]
+        });
+        markers.push(L.marker(center, { icon: divIcon, interactive: false }));
+      });
+      milIconLayer = L.layerGroup(markers).addTo(map);
+    }
+
     function showStats(id) {
       const c = countries[id];
       if (!c) return;
@@ -267,10 +294,11 @@
       if (c.conflict) extra += "<div class=\"conflict-tag\">In conflict: -" + c.conflictLoss + " mil/turn</div>";
       if (isSanctioned(id)) extra += "<div class=\"conflict-tag\">UNDER SANCTIONS: income halved, stability dropping</div>";
       if (isTariffed(id)) extra += "<div class=\"conflict-tag\">UNDER TARIFFS: exports hit, stability pressure</div>";
+      const branchLabel = c.branch === "navy" ? "Navy" : (c.branch === "air" ? "Air Force" : "Army");
       card.innerHTML = "<div class=\"stat-name\">" + c.name + "</div>" +
         "<div class=\"stat-leader\">Leader: " + leader + " | " + gov + "</div>" +
         "<div>GDP: $" + c.gdp + "B | Population: " + (pop >= 1000 ? (pop/1000).toFixed(1) + "B" : pop + "M") + "</div>" +
-        "<div>Military: " + c.mil + " | Stability: " + c.stability + "%</div>" +
+        "<div>Military: " + c.mil + " | Dominant branch: " + branchLabel + " | Stability: " + c.stability + "%</div>" +
         "<div class=\"" + statusClass + "\">Status: " + status + "</div>" +
         extra +
         (c.owner !== "You" && !c.owner ? "<div class=\"claim-cost\">Claim cost: $" + cost + "B</div><button onclick=\"claimCountry()\" " + (money < cost ? "disabled" : "") + ">Claim for $" + cost + "B</button>" : "");
@@ -283,9 +311,11 @@
       const gdp = gdps[id] || Math.round(50 + Math.random() * 450);
       const pop = populations[id] || Math.round(0.5 + Math.random() * 20);
       if (!countries[id]) {
+        const branches = ["navy", "air", "army"];
+        const branch = branches[Math.floor(Math.random() * branches.length)];
         countries[id] = {
           id: id, name: name, mil: Math.round(20 + Math.random() * 80),
-          gdp: gdp, stability: Math.round(30 + Math.random() * 50),
+          branch: branch, gdp: gdp, stability: Math.round(30 + Math.random() * 50),
           owner: null, pop: pop, budget: startingBudget(gdp, pop),
           relations: {}, income: 0, conflict: false, conflictLoss: 0, supportRefill: 0,
           tradePartners: []
@@ -306,6 +336,7 @@
 
     function render() {
       if (geoLayer) geoLayer.setStyle(styleFeature);
+      updateMilIcons();
       if (playerCountry) {
         const p = countries[playerCountry];
         let info = "Turn " + turn + " | Playing as <strong>" + p.name + "</strong> | Money: $" + money + "B | Military: " + p.mil + " | Stability: " + p.stability + "%";
@@ -554,7 +585,9 @@
       money -= 50;
       const p = countries[playerCountry];
       p.mil = Math.round(p.mil * 1.08);
-      log("Invested $50B in military. Power increased.");
+      const branches = ["navy", "air", "army"];
+      p.branch = branches[Math.floor(Math.random() * branches.length)];
+      log("Invested $50B in military. Power increased, now emphasizing " + (p.branch === "navy" ? "Navy" : (p.branch === "air" ? "Air Force" : "Army")) + ".");
       render();
     }
 
@@ -625,8 +658,9 @@
       .then(function(data) {
         geoLayer = L.geoJSON(data, { style: styleFeature, onEachFeature: onEachFeature }).addTo(map);
         map.fitBounds(geoLayer.getBounds());
+        updateMilIcons();
         log("Map loaded with " + Object.keys(countries).length + " countries. Tap one to start.");
-        log("Russia-Ukraine war LIVE. US-Iran standoff active. UN crises, News, Sanctions, and Tariffs ready.");
+        log("Russia-Ukraine war LIVE. US-Iran standoff active. UN crises, News, Sanctions, Tariffs, and military icons ready.");
       })
       .catch(function(err) {
         log("Failed to load map data: " + err.message);
