@@ -43,7 +43,7 @@
   </style>
 </head>
 <body>
-  <div class="version">11.24.26 V0.04</div>
+  <div class="version">11.24.26 V0.05</div>
   <div class="controls">
     <button onclick="nextTurn()" class="green">Next Turn</button>
     <button onclick="investMilitary()" class="blue">Invest in Military</button>
@@ -65,7 +65,7 @@
     const countries = {};
     let playerCountry = null;
     let turn = 1;
-    let money = 1000;
+    let money = 50;
     let selectedTarget = null;
     let map, geoLayer;
     let activeCrisis = null;
@@ -87,9 +87,9 @@
       "ISR": "Netanyahu", "ARE": "MBZ", "QAT": "Tamim", "KWT": "Mishal", "OMN": "Haitham",
       "JOR": "Abdullah II", "LBN": "Aoun", "SYR": "Ahmed al-Sharaa", "IRQ": "Sudani", "AFG": "Taliban",
       "THA": "Paetongtarn", "VNM": "To Lam", "MYS": "Anwar", "PHL": "Marcos", "SGP": "Wong",
-      "NZL": "Luxon", "CHL": "Boric", "COL": "Petro", "PER": "Jerí", "VEN": "Maduro",
+      "NZL": "Luxon", "CHL": "Boric", "COL": "Petro", "PER": "Jeri", "VEN": "Maduro",
       "CUB": "Diaz-Canel", "PRY": "Pena", "BOL": "Arce", "URY": "Orsi", "ECU": "Noboa",
-      "GTM": "Arévalo", "HND": "Castro", "SLV": "Bukele", "NIC": "Ortega", "CRI": "Chaves",
+      "GTM": "Arevalo", "HND": "Castro", "SLV": "Bukele", "NIC": "Ortega", "CRI": "Chaves",
       "PAN": "Mulino", "DOM": "Abinader", "HTI": "Transitional", "JAM": "Holness", "TTO": "Rowley",
       "BLR": "Lukashenko", "KAZ": "Tokayev", "UZB": "Mirziyoyev", "TKM": "Berdymukhamedov",
       "KGZ": "Japarov", "TJK": "Rahmon", "MNG": "Ukhnaagiin", "MMR": "Min Aung Hlaing",
@@ -125,73 +125,74 @@
       "ECU": "Presidential Republic", "GTM": "Presidential Republic", "HND": "Presidential Republic",
       "SLV": "Presidential Republic", "NIC": "Sandinista Republic", "CRI": "Presidential Republic",
       "PAN": "Presidential Republic", "DOM": "Presidential Republic", "HTI": "Transitional Government",
-      "JAM": "Parliamentary Monarchy", "TTO": "Parliamentary Republic", "BLR": "Presidential Republic",
-      "KAZ": "Presidential Republic", "UZB": "Presidential Republic", "TKM": "Presidential Republic",
-      "KGZ": "Parliamentary Republic", "TJK": "Presidential Republic", "MNG": "Parliamentary Republic",
-      "MMR": "Military Junta", "KHM": "Constitutional Monarchy", "LAO": "One-Party State",
-      "NPL": "Federal Parliamentary Republic", "BTN": "Constitutional Monarchy", "LKA": "Presidential Republic",
-      "BGD": "Interim Government", "MDV": "Presidential Republic", "BRN": "Absolute Monarchy",
-      "TLS": "Semi-Presidential Republic", "FJI": "Parliamentary Republic", "PNG": "Parliamentary Monarchy",
-      "SLB": "Parliamentary Monarchy", "VUT": "Parliamentary Republic", "WSM": "Parliamentary Republic",
-      "TON": "Constitutional Monarchy", "KIR": "Presidential Republic", "TUV": "Parliamentary Monarchy",
+      "JAM": "Parliamentary Monarchy", "TTO": "Parliamentary Republic", "BLR": "Presidential Republic", "KAZ": "Presidential Republic", "UZB": "Presidential Republic", "TKM": "Presidential Republic",
+      "KGZ": "Presidential Republic", "TJK": "Presidential Republic", "MNG": "Parliamentary Republic",
+      "MMR": "Military Junta", "KHM": "Absolute Monarchy", "LAO": "One-Party State",
+      "NPL": "Federal Parliamentary Republic", "BTN": "Constitutional Monarchy", "LKA": "Parliamentary Republic",
+      "BGD": "Parliamentary Republic", "MDV": "Presidential Republic", "BRN": "Absolute Monarchy",
+      "TLS": "Semi-Presidential Republic", "FJI": "Parliamentary Republic", "PNG": "Constitutional Monarchy",
+      "SLB": "Constitutional Monarchy", "VUT": "Parliamentary Republic", "WSM": "Parliamentary Republic",
+      "TON": "Constitutional Monarchy", "KIR": "Presidential Republic", "TUV": "Constitutional Monarchy",
       "NRU": "Parliamentary Republic", "PLW": "Presidential Republic", "FSM": "Federal Republic",
-      "MHL": "Presidential Republic", "COK": "Parliamentary Republic", "NIU": "Self-Governing", "TKL": "Self-Governing"
+      "MHL": "Presidential Republic", "COK": "Parliamentary Republic", "NIU": "Self-Governing", "TKL": "Parliamentary Democracy"
     };
 
     const populations = {
-      "USA": 335, "CHN": 1410, "IND": 1430, "RUS": 144, "JPN": 124, "DEU": 84, "BRA": 216, "GBR": 68,
-      "FRA": 68, "ITA": 59, "CAN": 40, "MEX": 130, "KOR": 52, "ESP": 48, "AUS": 26, "TUR": 86,
-      "IDN": 278, "NGA": 225, "PAK": 240, "EGY": 112, "IRN": 90, "VNM": 98, "PHL": 115, "THA": 71,
-      "MYS": 34, "SAU": 37, "ZAF": 62, "ARG": 46, "COL": 52, "UKR": 38, "POL": 38, "DZA": 46,
-      "SDN": 48, "MAR": 38, "AGO": 36, "ETH": 126, "TZA": 67, "KEN": 55, "UGA": 48, "GHA": 34,
-      "MOZ": 33, "MDG": 30, "CMR": 28, "CIV": 29, "NER": 26, "BFA": 23, "MLI": 23, "MWI": 21,
-      "ZMB": 20, "SEN": 18, "TCD": 18, "SOM": 18, "ZWE": 16, "GIN": 14, "RWA": 14, "BEN": 13,
-      "TUN": 12, "BOL": 12, "CUB": 11, "HTI": 11, "DOM": 11, "HND": 10, "GTM": 17, "ECU": 18,
-      "PER": 34, "VEN": 29, "CHL": 19, "PRT": 10, "NLD": 18, "BEL": 12, "GRC": 10, "CZE": 11,
-      "ROU": 19, "HUN": 10, "SWE": 10, "NOR": 5.5, "DNK": 5.9, "FIN": 5.6, "CHE": 8.8, "AUT": 9,
-      "IRL": 5.2, "NZL": 5.2, "ISR": 9.8, "ARE": 9.5, "QAT": 2.9, "KWT": 4.3, "OMN": 4.6, "JOR": 11,
-      "LBN": 5.5, "SYR": 23, "IRQ": 44, "AFG": 41, "MMR": 54, "KHM": 17, "LAO": 7.5, "NPL": 30,
-      "BTN": 0.78, "LKA": 22, "BGD": 172, "MDV": 0.52, "BRN": 0.45, "TLS": 1.3, "FJI": 0.93,
-      "PNG": 10, "SLB": 0.72, "VUT": 0.33, "WSM": 0.22, "TON": 0.11, "KIR": 0.13, "TUV": 0.011,
-      "NRU": 0.012, "PLW": 0.018, "FSM": 0.115, "MHL": 0.042, "COK": 0.015, "NIU": 0.0017, "TKL": 0.0015,
-      "BLR": 9.2, "KAZ": 19.5, "UZB": 35, "TKM": 6.4, "KGZ": 6.7, "TJK": 10, "MNG": 3.4,
-      "PRY": 6.9, "URY": 3.4, "CRI": 5.2, "PAN": 4.4, "SLV": 6.3, "NIC": 6.8, "JAM": 2.8,
-      "TTO": 1.4, "BLZ": 0.41, "SUR": 0.62, "GUY": 0.80, "LUX": 0.66, "MLT": 0.54, "CYP": 1.2,
-      "EST": 1.3, "LVA": 1.9, "LTU": 2.8, "SVN": 2.1, "SVK": 5.4, "HRV": 3.9, "BIH": 3.2,
-      "SRB": 6.6, "MNE": 0.62, "MKD": 2.1, "ALB": 2.8, "XKX": 1.8, "MDA": 2.6, "GEO": 3.7,
-      "ARM": 3.0, "AZE": 10.1
+      "USA": 330, "CHN": 1400, "RUS": 144, "FRA": 68, "GBR": 67, "IND": 1400, "BRA": 215, "JPN": 125,
+      "DEU": 84, "CAN": 39, "AUS": 26, "MEX": 130, "KOR": 52, "ITA": 59, "ESP": 48, "TUR": 85,
+      "IDN": 275, "SAU": 36, "IRN": 89, "PAK": 240, "NGA": 220, "EGY": 110, "ARG": 46, "ZAF": 60,
+      "UKR": 38, "POL": 38, "NLD": 18, "SWE": 10.5, "NOR": 5.5, "DNK": 5.9, "FIN": 5.6, "CHE": 8.8,
+      "AUT": 9, "BEL": 11.7, "PRT": 10.3, "GRC": 10.4, "CZE": 10.9, "ROU": 19, "HUN": 9.6,
+      "ISR": 9.7, "ARE": 9.5, "QAT": 2.9, "KWT": 4.3, "OMN": 5.2, "JOR": 11.3, "LBN": 5.5,
+      "SYR": 23, "IRQ": 44, "AFG": 41, "THA": 70, "VNM": 98, "MYS": 34, "PHL": 115, "SGP": 5.9,
+      "NZL": 5.2, "CHL": 19.6, "COL": 52, "PER": 34, "VEN": 28, "CUB": 11, "PRY": 6.8, "BOL": 12,
+      "URY": 3.4, "ECU": 18, "GTM": 17.6, "HND": 10.4, "SLV": 6.3, "NIC": 6.9, "CRI": 5.2,
+      "PAN": 4.4, "DOM": 11, "HTI": 11.7, "JAM": 2.8, "TTO": 1.4, "BLR": 9.2, "KAZ": 19.6,
+      "UZB": 35, "TKM": 6.4, "KGZ": 6.7, "TJK": 10, "MNG": 3.4, "MMR": 54, "KHM": 16.7, "LAO": 7.5,
+      "NPL": 30, "BTN": 0.78, "LKA": 22, "BGD": 170, "MDV": 0.52, "BRN": 0.45, "TLS": 1.3,
+      "FJI": 0.93, "PNG": 10, "SLB": 0.72, "VUT": 0.33, "WSM": 0.22, "TON": 0.1, "KIR": 0.13,
+      "TUV": 0.011, "NRU": 0.012, "PLW": 0.018, "FSM": 0.115, "MHL": 0.042, "COK": 0.017,
+      "NIU": 0.0017, "TKL": 0.0015
     };
 
     const gdps = {
-      "USA": 29000, "CHN": 18000, "JPN": 4100, "DEU": 4600, "IND": 3900, "GBR": 3500, "FRA": 3000,
-      "ITA": 2300, "BRA": 2200, "CAN": 2200, "RUS": 2000, "KOR": 1800, "MEX": 1800, "AUS": 1700,
-      "ESP": 1600, "IDN": 1400, "NLD": 1100, "TUR": 1100, "SAU": 1100, "CHE": 950, "POL": 850,
-      "ARG": 640, "SWE": 610, "BEL": 650, "IRL": 550, "NOR": 500, "AUT": 520, "ISR": 530, "THA": 510,
-      "ARE": 510, "NGA": 400, "EGY": 390, "DNK": 410, "SGP": 500, "PHL": 440, "MYS": 440, "HKG": 410,
-      "VNM": 430, "BGD": 450, "PAK": 340, "CHL": 330, "FIN": 300, "CZE": 330, "ROU": 350, "NZL": 250,
-      "PER": 270, "QAT": 240, "KAZ": 290, "PRT": 290, "GRC": 250, "DZA": 270, "KWT": 160, "HUN": 210,
-      "UKR": 160, "MAR": 150, "COL": 420, "ZAF": 380
+      "USA": 29000, "CHN": 18000, "RUS": 2000, "FRA": 3000, "GBR": 3400, "IND": 3900, "BRA": 2200,
+      "JPN": 4100, "DEU": 4600, "CAN": 2200, "AUS": 1700, "MEX": 1800, "KOR": 1800, "ITA": 2300,
+      "ESP": 1600, "TUR": 1100, "IDN": 1400, "SAU": 1100, "IRN": 400, "PAK": 350, "NGA": 400,
+      "EGY": 470, "ARG": 630, "ZAF": 400, "UKR": 160, "POL": 810, "NLD": 1100, "SWE": 600,
+      "NOR": 480, "DNK": 400, "FIN": 300, "CHE": 900, "AUT": 520, "BEL": 630, "PRT": 290,
+      "GRC": 240, "CZE": 330, "ROU": 350, "HUN": 210, "ISR": 530, "ARE": 510, "QAT": 220,
+      "KWT": 160, "OMN": 100, "JOR": 50, "LBN": 20, "SYR": 9, "IRQ": 260, "AFG": 15,
+      "THA": 510, "VNM": 430, "MYS": 440, "PHL": 440, "SGP": 500, "NZL": 250, "CHL": 330,
+      "COL": 420, "PER": 280, "VEN": 100, "CUB": 107, "PRY": 42, "BOL": 45, "URY": 77,
+      "ECU": 120, "GTM": 95, "HND": 33, "SLV": 32, "NIC": 17, "CRI": 85, "PAN": 88,
+      "DOM": 120, "HTI": 20, "JAM": 19, "TTO": 28, "BLR": 70, "KAZ": 290, "UZB": 90,
+      "TKM": 60, "KGZ": 13, "TJK": 11, "MNG": 20, "MMR": 65, "KHM": 30, "LAO": 15,
+      "NPL": 41, "BTN": 3, "LKA": 88, "BGD": 460, "MDV": 6, "BRN": 15, "TLS": 2,
+      "FJI": 5, "PNG": 30, "SLB": 1.6, "VUT": 1.1, "WSM": 0.9, "TON": 0.5, "KIR": 0.3,
+      "TUV": 0.06, "NRU": 0.15, "PLW": 0.3, "FSM": 0.4, "MHL": 0.3, "COK": 0.4,
+      "NIU": 0.03, "TKL": 0.02
     };
 
-    const securityCouncil = ["USA", "CHN", "RUS", "GBR", "FRA"];
-
     const crisisTypes = [
-      { type: "refugee_surge", title: "Refugee Surge", desc: "Millions displaced, border states overwhelmed." },
-      { type: "nuclear_scare", title: "Nuclear Scare", desc: "Intelligence suggests possible weapons activity." },
-      { type: "pandemic", title: "Pandemic Outbreak", desc: "New pathogen spreading rapidly across borders." }
+      { type: "refugee", title: "Refugee Surge", desc: "Millions displaced, straining neighboring economies." },
+      { type: "nuclear", title: "Nuclear Scare", desc: "A nuclear facility incident triggers global alarm." },
+      { type: "pandemic", title: "Pandemic Outbreak", desc: "A novel pathogen spreads across borders rapidly." },
+      { type: "famine", title: "Food Crisis", desc: "Crop failures threaten mass starvation in the region." },
+      { type: "cyber", title: "Cyberattack", desc: "Critical infrastructure hit by state-sponsored hackers." }
     ];
 
     const newsPool = [
-      { headline: "Major trade deal signed between EU and Mercosur bloc", countries: ["DEU","FRA","BRA","ARG"], effect: "gdp_up" },
-      { headline: "OPEC announces surprise production cut", countries: ["SAU","ARE","QAT","KWT"], effect: "gdp_up" },
-      { headline: "Cyberattack disrupts banking across Southeast Asia", countries: ["IDN","MYS","THA","VNM","PHL"], effect: "stability_down" },
-      { headline: "Breakthrough in AI chip manufacturing reported", countries: ["USA","TWN","KOR","JPN"], effect: "mil_up" },
-      { headline: "Food crisis deepens in Horn of Africa", countries: ["ETH","SOM","KEN","SDN"], effect: "pop_down" },
-      { headline: "Historic peace summit held in the Gulf", countries: ["SAU","QAT","ARE","OMN"], effect: "stability_up" },
-      { headline: "Rare earth export restrictions tightened", countries: ["CHN"], effect: "gdp_down" },
-      { headline: "New Arctic shipping route opens", countries: ["RUS","NOR","CAN"], effect: "gdp_up" },
-      { headline: "Debt default rattles emerging markets", countries: ["ARG","TUR","PAK","NGA"], effect: "stability_down" },
-      { headline: "Space station module successfully docked", countries: ["USA","RUS","CHN","JPN","FRA"], effect: "mil_up" }
+      { headline: "Global markets rally on trade optimism", effect: "gdp_up", countries: ["USA","CHN","DEU","JPN"] },
+      { headline: "Oil prices spike amid Middle East tensions", effect: "gdp_down", countries: ["IRN","SAU","ARE"] },
+      { headline: "UN climate summit reaches landmark deal", effect: "stability_up", countries: ["FRA","GBR","DEU","CAN"] },
+      { headline: "Tech boom lifts Asian economies", effect: "gdp_up", countries: ["KOR","SGP","TWN","JPN"] },
+      { headline: "Debt crisis deepens in Latin America", effect: "gdp_down", countries: ["ARG","VEN","BOL"] },
+      { headline: "NATO strengthens eastern flank", effect: "mil_up", countries: ["POL","UKR","BLR"] },
+      { headline: "African Union launches infrastructure fund", effect: "stability_up", countries: ["NGA","KEN","ETH","ZAF"] },
+      { headline: "Pacific island nations face rising seas", effect: "pop_down", countries: ["FJI","KIR","TUV","NRU"] },
+      { headline: "BRICS expansion reshapes trade blocs", effect: "gdp_up", countries: ["BRA","IND","ZAF","RUS"] },
+      { headline: "European energy crisis eases", effect: "stability_up", countries: ["DEU","FRA","ITA","ESP"] }
     ];
 
     function normalizeId(feature) {
@@ -272,7 +273,7 @@
         "<div>Military: " + c.mil + " | Stability: " + c.stability + "%</div>" +
         "<div class=\"" + statusClass + "\">Status: " + status + "</div>" +
         extra +
-        (c.owner !== "You" && !c.owner ? "<div class=\"claim-cost\">Claim cost: $" + cost + "B</div>" : "");
+        (c.owner !== "You" && !c.owner ? "<div class=\"claim-cost\">Claim cost: $" + cost + "B</div><button onclick=\"claimCountry()\" " + (money < cost ? "disabled" : "") + ">Claim for $" + cost + "B</button>" : "");
       card.classList.add("visible");
     }
 
@@ -318,7 +319,7 @@
       playerCountry = id;
       const p = countries[id];
       p.owner = "You";
-      money = Math.round(p.gdp / 10);
+      money = 50;
       log("You now control " + p.name + " (GDP $" + p.gdp + "B, pop " + p.pop + "M). Build your power.");
       render();
       if (geoLayer) {
@@ -379,7 +380,7 @@
         banner.classList.add("visible");
         log("UN session open. Active crisis: " + activeCrisis.title + " in " + countries[activeCrisis.center].name + ".");
       } else {
-        log("UN General Assembly convened. No active crises. Security Council: USA, China, Russia, UK, France — any permanent member can veto.");
+        log("UN General Assembly convened. No active crises. Security Council: USA, China, Russia, UK, France - any permanent member can veto.");
       }
     }
 
@@ -452,7 +453,6 @@
       p.budget += Math.round(income * 0.5);
       log("Turn " + turn + ": Economy generated +$" + income + "B. Total money: $" + money + "B");
 
-      // Russia-Ukraine live conflict
       const rus = countries["RUS"];
       const ukr = countries["UKR"];
       if (rus && ukr) {
@@ -466,7 +466,6 @@
         rus.conflictLoss = 2; ukr.conflictLoss = 1;
       }
 
-      // US-Iran standoff
       const irn = countries["IRN"];
       const usa = countries["USA"];
       if (irn && usa) {
@@ -480,7 +479,6 @@
         }
       }
 
-      // Sanction tick-down
       activeSanctions = activeSanctions.filter(function(s) {
         s.turns--;
         const c = countries[s.target];
@@ -489,7 +487,7 @@
           c.stability = Math.max(10, c.stability - 2);
           if (Math.random() < 0.3) {
             activeTariffs.push({ target: s.target, turns: 2 });
-            log(c.name + " broke sanctions illegally — short-term boost, reputation tanked.");
+            log(c.name + " broke sanctions illegally - short-term boost, reputation tanked.");
             c.gdp = Math.round(c.gdp * 1.08);
             Object.keys(countries).forEach(function(k) {
               if (countries[k].relations[playerCountry]) countries[k].relations[playerCountry] = Math.max(0, countries[k].relations[playerCountry] - 5);
@@ -503,7 +501,6 @@
         return true;
       });
 
-      // Tariff tick-down
       activeTariffs = activeTariffs.filter(function(t) {
         t.turns--;
         const c = countries[t.target];
@@ -518,7 +515,6 @@
         return true;
       });
 
-      // AI nations act
       Object.keys(countries).forEach(function(k) {
         const c = countries[k];
         if (c.owner !== "You") {
@@ -531,7 +527,6 @@
         }
       });
 
-      // Crisis expiry
       if (activeCrisis && turn > activeCrisis.expires) {
         log("UN resolution on " + activeCrisis.title + " expired without action. Slight relation shift.");
         Object.keys(countries).forEach(function(k) {
@@ -545,7 +540,6 @@
         document.getElementById("crisis-banner").classList.remove("visible");
       }
 
-      // New crisis chance
       crisisCooldown--;
       if (!activeCrisis && crisisCooldown <= 0 && Math.random() < 0.2) {
         generateCrisis();
@@ -562,6 +556,20 @@
       p.mil = Math.round(p.mil * 1.08);
       log("Invested $50B in military. Power increased.");
       render();
+    }
+
+    function claimCountry() {
+      if (!selectedTarget || selectedTarget === playerCountry) { log("Select a different country to claim."); return; }
+      const c = countries[selectedTarget];
+      if (!c || c.owner) { log("That country is already controlled."); return; }
+      const cost = claimCost(c.gdp);
+      if (money < cost) { log("Need $" + cost + "B to claim " + c.name + ". You have $" + money + "B."); return; }
+      money -= cost;
+      c.owner = "You";
+      log("CLAIMED " + c.name + " for $" + cost + "B. Remaining: $" + money + "B.");
+      selectedTarget = null;
+      render();
+      showStats(c.id);
     }
 
     function attack() {
