@@ -9,13 +9,14 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
-    #map { height: 60vh; width: 100%; }
+    #map { height: 58vh; width: 100%; }
     .controls { padding: 10px 12px; background: #1e293b; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid #334155; }
     button { background: #ef4444; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px; }
     button:hover { background: #dc2626; }
     button.blue { background: #3b82f6; }
     button.green { background: #22c55e; }
     button.purple { background: #a855f7; }
+    button.orange { background: #fb923c; }
     button:disabled { opacity: 0.4; cursor: not-allowed; }
     .player-info { padding: 10px 16px; background: #1e293b; font-size: 14px; border-bottom: 1px solid #334155; }
     .stats-card { display: none; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px 16px; margin: 10px 12px; font-size: 13px; line-height: 1.7; }
@@ -30,15 +31,19 @@
     .crisis-banner .crisis-title { font-size: 16px; font-weight: 700; color: #fca5a5; }
     .vote-row { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
     .vote-row button { font-size: 12px; padding: 6px 12px; }
-    .log { background: #0f172a; border-top: 1px solid #334155; padding: 12px; height: 110px; overflow-y: auto; font-size: 13px; }
+    .sanction-banner { display: none; background: #713f12; border: 1px solid #fb923c; border-radius: 8px; padding: 10px 16px; margin: 10px 12px; font-size: 13px; }
+    .sanction-banner.visible { display: block; }
+    .sanction-banner .sanction-title { font-weight: 700; color: #fdba74; }
+    .log { background: #0f172a; border-top: 1px solid #334155; padding: 12px; height: 100px; overflow-y: auto; font-size: 13px; }
     .version { position: absolute; top: 8px; right: 8px; z-index: 1000; background: rgba(15,23,42,0.85); color: #FFD700; font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 4px; }
     .leaflet-container { background: #0f172a; }
     .claim-cost { color: #fb923c; font-weight: 600; }
     .conflict-tag { color: #f87171; font-weight: 700; }
+    .sanctioned { text-decoration: line-through; color: #fb923c; }
   </style>
 </head>
 <body>
-  <div class="version">11.24.26 V0.03</div>
+  <div class="version">11.24.26 V0.04</div>
   <div class="controls">
     <button onclick="nextTurn()" class="green">Next Turn</button>
     <button onclick="investMilitary()" class="blue">Invest in Military</button>
@@ -46,10 +51,12 @@
     <button onclick="diplomacy()">Diplomacy / Alliance</button>
     <button onclick="research()">Research Tech</button>
     <button onclick="openUN()" class="purple">UN</button>
+    <button onclick="fetchNews()" class="orange">News</button>
   </div>
   <div class="player-info" id="player-info">Select a country on the map to begin.</div>
   <div class="stats-card" id="stats-card"></div>
   <div class="crisis-banner" id="crisis-banner"></div>
+  <div class="sanction-banner" id="sanction-banner"></div>
   <div id="map"></div>
   <div class="log" id="log">Welcome to World Powers 26. Tap a country to claim it.</div>
   <script>
@@ -63,6 +70,8 @@
     let map, geoLayer;
     let activeCrisis = null;
     let crisisCooldown = 0;
+    let activeSanctions = [];
+    let activeTariffs = [];
 
     const palette = ["#3b82f6","#ef4444","#22c55e","#facc15","#a855f7","#fb923c","#14b8a6","#ec4899","#6366f1","#84cc16","#06b6d4","#f43f5e","#8b5cf6","#d946ef","#0ea5e9","#10b981"];
 
@@ -172,6 +181,19 @@
       { type: "pandemic", title: "Pandemic Outbreak", desc: "New pathogen spreading rapidly across borders." }
     ];
 
+    const newsPool = [
+      { headline: "Major trade deal signed between EU and Mercosur bloc", countries: ["DEU","FRA","BRA","ARG"], effect: "gdp_up" },
+      { headline: "OPEC announces surprise production cut", countries: ["SAU","ARE","QAT","KWT"], effect: "gdp_up" },
+      { headline: "Cyberattack disrupts banking across Southeast Asia", countries: ["IDN","MYS","THA","VNM","PHL"], effect: "stability_down" },
+      { headline: "Breakthrough in AI chip manufacturing reported", countries: ["USA","TWN","KOR","JPN"], effect: "mil_up" },
+      { headline: "Food crisis deepens in Horn of Africa", countries: ["ETH","SOM","KEN","SDN"], effect: "pop_down" },
+      { headline: "Historic peace summit held in the Gulf", countries: ["SAU","QAT","ARE","OMN"], effect: "stability_up" },
+      { headline: "Rare earth export restrictions tightened", countries: ["CHN"], effect: "gdp_down" },
+      { headline: "New Arctic shipping route opens", countries: ["RUS","NOR","CAN"], effect: "gdp_up" },
+      { headline: "Debt default rattles emerging markets", countries: ["ARG","TUR","PAK","NGA"], effect: "stability_down" },
+      { headline: "Space station module successfully docked", countries: ["USA","RUS","CHN","JPN","FRA"], effect: "mil_up" }
+    ];
+
     function normalizeId(feature) {
       return feature.properties["ISO_A3"] || feature.properties["iso_a3"] || feature.id || feature.properties["name"];
     }
@@ -200,6 +222,14 @@
       return Math.max(30, base + popBonus);
     }
 
+    function isSanctioned(id) {
+      return activeSanctions.some(function(s) { return s.target === id; });
+    }
+
+    function isTariffed(id) {
+      return activeTariffs.some(function(t) { return t.target === id; });
+    }
+
     function styleFeature(feature) {
       const id = normalizeId(feature);
       const c = countries[id];
@@ -207,12 +237,14 @@
       const allied = c && c.owner && c.owner !== "You" && c.relations && c.relations[playerCountry] > 60;
       const selected = c && selectedTarget === id;
       const crisisHit = activeCrisis && activeCrisis.center === id;
+      const sanctioned = isSanctioned(id);
       return {
         fillColor: crisisHit ? "#ef4444" : getColor(id),
-        fillOpacity: owned ? 0.75 : (allied ? 0.55 : (crisisHit ? 0.6 : 0.35)),
-        color: selected ? "#facc15" : (owned ? "#FFD700" : (allied ? "#3b82f6" : (crisisHit ? "#fca5a5" : "#64748b"))),
-        weight: selected ? 3 : (owned ? 2.5 : (allied ? 1.5 : (crisisHit ? 2 : 0.6))),
-        opacity: 1
+        fillOpacity: owned ? 0.75 : (allied ? 0.55 : (crisisHit ? 0.6 : (sanctioned ? 0.2 : 0.35))),
+        color: selected ? "#facc15" : (owned ? "#FFD700" : (allied ? "#3b82f6" : (crisisHit ? "#fca5a5" : (sanctioned ? "#fb923c" : "#64748b")))),
+        weight: selected ? 3 : (owned ? 2.5 : (allied ? 1.5 : (crisisHit ? 2 : (sanctioned ? 1.5 : 0.6)))),
+        opacity: 1,
+        dashArray: sanctioned ? "8,6" : null
       };
     }
 
@@ -232,6 +264,8 @@
       if (id === "UKR") extra += "<div class=\"conflict-tag\">LIVE CONFLICT: Russia-Ukraine war ongoing</div>";
       if (id === "IRN") extra += "<div class=\"conflict-tag\">US-IRAN STANDOFF: sanctions draining economy</div>";
       if (c.conflict) extra += "<div class=\"conflict-tag\">In conflict: -" + c.conflictLoss + " mil/turn</div>";
+      if (isSanctioned(id)) extra += "<div class=\"conflict-tag\">UNDER SANCTIONS: income halved, stability dropping</div>";
+      if (isTariffed(id)) extra += "<div class=\"conflict-tag\">UNDER TARIFFS: exports hit, stability pressure</div>";
       card.innerHTML = "<div class=\"stat-name\">" + c.name + "</div>" +
         "<div class=\"stat-leader\">Leader: " + leader + " | " + gov + "</div>" +
         "<div>GDP: $" + c.gdp + "B | Population: " + (pop >= 1000 ? (pop/1000).toFixed(1) + "B" : pop + "M") + "</div>" +
@@ -252,7 +286,8 @@
           id: id, name: name, mil: Math.round(20 + Math.random() * 80),
           gdp: gdp, stability: Math.round(30 + Math.random() * 50),
           owner: null, pop: pop, budget: startingBudget(gdp, pop),
-          relations: {}, income: 0, conflict: false, conflictLoss: 0, supportRefill: 0
+          relations: {}, income: 0, conflict: false, conflictLoss: 0, supportRefill: 0,
+          tradePartners: []
         };
       }
       layer.on("click", function() {
@@ -272,7 +307,10 @@
       if (geoLayer) geoLayer.setStyle(styleFeature);
       if (playerCountry) {
         const p = countries[playerCountry];
-        document.getElementById("player-info").innerHTML = "Turn " + turn + " | Playing as <strong>" + p.name + "</strong> | Money: $" + money + "B | Military: " + p.mil + " | Stability: " + p.stability + "%";
+        let info = "Turn " + turn + " | Playing as <strong>" + p.name + "</strong> | Money: $" + money + "B | Military: " + p.mil + " | Stability: " + p.stability + "%";
+        if (activeSanctions.length > 0) info += " | Sanctions active: " + activeSanctions.map(function(s) { return s.target; }).join(", ");
+        if (activeTariffs.length > 0) info += " | Tariffs on: " + activeTariffs.map(function(t) { return t.target; }).join(", ");
+        document.getElementById("player-info").innerHTML = info;
       }
     }
 
@@ -345,11 +383,71 @@
       }
     }
 
+    function fetchNews() {
+      const item = newsPool[Math.floor(Math.random() * newsPool.length)];
+      log("NEWS: " + item.headline);
+      item.countries.forEach(function(cid) {
+        const c = countries[cid];
+        if (!c) return;
+        if (item.effect === "gdp_up") { c.gdp = Math.round(c.gdp * 1.03); }
+        else if (item.effect === "gdp_down") { c.gdp = Math.round(c.gdp * 0.97); }
+        else if (item.effect === "stability_up") { c.stability = Math.min(100, c.stability + 5); }
+        else if (item.effect === "stability_down") { c.stability = Math.max(10, c.stability - 5); }
+        else if (item.effect === "mil_up") { c.mil = Math.round(c.mil * 1.05); }
+        else if (item.effect === "pop_down") { c.pop = Math.max(1, Math.round(c.pop * 0.98)); }
+      });
+      render();
+    }
+
+    function imposeSanctions() {
+      if (!selectedTarget || selectedTarget === playerCountry) { log("Select a different country to sanction."); return; }
+      const target = countries[selectedTarget];
+      if (isSanctioned(selectedTarget)) { log(target.name + " is already under sanctions."); return; }
+      activeSanctions.push({ target: selectedTarget, turns: 4 });
+      target.stability = Math.max(10, target.stability - 5);
+      log("SANCTIONS imposed on " + target.name + "! Income halved for 4 turns. They may retaliate.");
+      if (Math.random() < 0.4) {
+        const retaliators = Object.keys(countries).filter(function(k) {
+          return countries[k].owner !== "You" && countries[k].relations[playerCountry] && countries[k].relations[playerCountry] < 40;
+        });
+        if (retaliators.length > 0) {
+          const r = retaliators[Math.floor(Math.random() * retaliators.length)];
+          activeTariffs.push({ target: r, turns: 3 });
+          log(countries[r].name + " retaliated with tariffs on your exports!");
+        }
+      }
+      render();
+    }
+
+    function imposeTariffs() {
+      if (!selectedTarget || selectedTarget === playerCountry) { log("Select a different country to tariff."); return; }
+      const target = countries[selectedTarget];
+      if (isTariffed(selectedTarget)) { log(target.name + " is already tariffed."); return; }
+      activeTariffs.push({ target: selectedTarget, turns: 3 });
+      target.stability = Math.max(10, target.stability - 3);
+      target.gdp = Math.round(target.gdp * 0.97);
+      log("TARIFFS imposed on " + target.name + "! Their exports drop, your consumers pay more. Stability hit.");
+      if (Math.random() < 0.5) {
+        const retaliators = Object.keys(countries).filter(function(k) {
+          return countries[k].owner !== "You" && Math.random() < 0.3;
+        });
+        retaliators.forEach(function(r) {
+          if (!isTariffed(r) && !isSanctioned(r)) {
+            activeTariffs.push({ target: r, turns: 3 });
+            log("Trade war spark: " + countries[r].name + " hit back with counter-tariffs!");
+          }
+        });
+      }
+      render();
+    }
+
     function nextTurn() {
       if (!playerCountry) { log("Select a country first by tapping it on the map."); return; }
       turn++;
       const p = countries[playerCountry];
-      const income = Math.round(p.gdp * 0.05 * (p.stability / 100) + p.pop * 0.1);
+      let income = Math.round(p.gdp * 0.05 * (p.stability / 100) + p.pop * 0.1);
+      if (isSanctioned(playerCountry)) income = Math.round(income * 0.5);
+      if (isTariffed(playerCountry)) { income = Math.round(income * 0.9); p.stability = Math.max(10, p.stability - 1); }
       money += income;
       p.budget += Math.round(income * 0.5);
       log("Turn " + turn + ": Economy generated +$" + income + "B. Total money: $" + money + "B");
@@ -361,9 +459,7 @@
         rus.mil = Math.max(10, rus.mil - 2);
         rus.stability = Math.max(10, rus.stability - 1);
         rus.gdp = Math.round(rus.gdp * 0.998);
-        if (Math.random() < 0.6) {
-          ukr.mil = Math.max(5, ukr.mil - 1);
-        }
+        if (Math.random() < 0.6) ukr.mil = Math.max(5, ukr.mil - 1);
         ukr.mil = Math.min(ukr.mil + 2, 60);
         ukr.budget += 15;
         rus.conflict = true; ukr.conflict = true;
@@ -384,11 +480,52 @@
         }
       }
 
+      // Sanction tick-down
+      activeSanctions = activeSanctions.filter(function(s) {
+        s.turns--;
+        const c = countries[s.target];
+        if (c) {
+          c.gdp = Math.round(c.gdp * 0.95);
+          c.stability = Math.max(10, c.stability - 2);
+          if (Math.random() < 0.3) {
+            activeTariffs.push({ target: s.target, turns: 2 });
+            log(c.name + " broke sanctions illegally — short-term boost, reputation tanked.");
+            c.gdp = Math.round(c.gdp * 1.08);
+            Object.keys(countries).forEach(function(k) {
+              if (countries[k].relations[playerCountry]) countries[k].relations[playerCountry] = Math.max(0, countries[k].relations[playerCountry] - 5);
+            });
+          }
+        }
+        if (s.turns <= 0) {
+          log("Sanctions on " + (c ? c.name : s.target) + " expired.");
+          return false;
+        }
+        return true;
+      });
+
+      // Tariff tick-down
+      activeTariffs = activeTariffs.filter(function(t) {
+        t.turns--;
+        const c = countries[t.target];
+        if (c) {
+          c.gdp = Math.round(c.gdp * 0.98);
+          c.stability = Math.max(10, c.stability - 1);
+        }
+        if (t.turns <= 0) {
+          log("Tariffs on " + (c ? c.name : t.target) + " expired.");
+          return false;
+        }
+        return true;
+      });
+
       // AI nations act
       Object.keys(countries).forEach(function(k) {
         const c = countries[k];
         if (c.owner !== "You") {
-          c.budget += Math.round(c.income || (c.gdp * 0.01));
+          let aiIncome = Math.round(c.income || (c.gdp * 0.01));
+          if (isSanctioned(k)) aiIncome = Math.round(aiIncome * 0.5);
+          if (isTariffed(k)) aiIncome = Math.round(aiIncome * 0.9);
+          c.budget += aiIncome;
           if (Math.random() < 0.3) c.mil = Math.round(c.mil * 1.02);
           if (c.conflict) c.mil = Math.max(5, c.mil - c.conflictLoss);
         }
@@ -481,7 +618,7 @@
         geoLayer = L.geoJSON(data, { style: styleFeature, onEachFeature: onEachFeature }).addTo(map);
         map.fitBounds(geoLayer.getBounds());
         log("Map loaded with " + Object.keys(countries).length + " countries. Tap one to start.");
-        log("Russia-Ukraine war is LIVE. US-Iran standoff active. UN crises will appear every 5-8 turns.");
+        log("Russia-Ukraine war LIVE. US-Iran standoff active. UN crises, News, Sanctions, and Tariffs ready.");
       })
       .catch(function(err) {
         log("Failed to load map data: " + err.message);
