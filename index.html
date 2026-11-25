@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>World Powers 26</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -48,7 +48,7 @@
   </style>
 </head>
 <body>
-  <div class="version">11.24.26 V0.08</div>
+  <div class="version">11.24.26 V0.09</div>
   <div class="controls">
     <button onclick="nextTurn()" class="green">Next Turn</button>
     <button onclick="investMilitary()" class="blue">Invest in Military</button>
@@ -58,6 +58,7 @@
     <button onclick="openUN()" class="purple">UN</button>
     <button onclick="fetchNews()" class="orange">News</button>
     <button onclick="blockade()" class="blue">Blockade</button>
+    <button onclick="lbToggle()" class="blue">Leaders</button>
   </div>
   <div class="player-info" id="player-info">Select a country on the map to begin.</div>
   <div class="stats-card" id="stats-card"></div>
@@ -67,13 +68,14 @@
   <div id="map"></div>
   <div class="log" id="log">Welcome to World Powers 26. Tap a country to claim it.</div>
   <script src="chokepoints.js"></script>
+  <script src="leaderboard.js"></script>
   <script>
     const GEOJSON_URL = "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson";
 
     const countries = {};
     let playerCountry = null;
     let turn = 1;
-    let money = 50;
+    let money = 50000;
     let selectedTarget = null;
     let map, geoLayer, milIconLayer;
     let activeCrisis = null;
@@ -141,7 +143,8 @@
       "ECU": "Presidential Republic", "GTM": "Presidential Republic", "HND": "Presidential Republic",
       "SLV": "Presidential Republic", "NIC": "Sandinista Republic", "CRI": "Presidential Republic",
       "PAN": "Presidential Republic", "DOM": "Presidential Republic", "HTI": "Transitional Government",
-      "JAM": "Parliamentary Monarchy", "TTO": "Parliamentary Republic", "BLR": "Presidential Republic", "KAZ": "Presidential Republic", "UZB": "Presidential Republic", "TKM": "Presidential Republic",
+      "JAM": "Parliamentary Monarchy", "TTO": "Parliamentary Republic", "BLR": "Presidential Republic",
+      "KAZ": "Presidential Republic", "UZB": "Presidential Republic", "TKM": "Presidential Republic",
       "KGZ": "Presidential Republic", "TJK": "Presidential Republic", "MNG": "Parliamentary Republic",
       "MMR": "Military Junta", "KHM": "Absolute Monarchy", "LAO": "One-Party State",
       "NPL": "Federal Parliamentary Republic", "BTN": "Constitutional Monarchy", "LKA": "Parliamentary Republic",
@@ -318,7 +321,7 @@
       if (!playerCountry) {
         playerCountry = id;
         c.owner = "You";
-        money = 50;
+        money = 50000;
         log("You claimed " + id + " for free. Starting budget: $50B. Claim more countries to grow.");
         document.getElementById("player-info").innerHTML = "You: " + id + " | Money: $" + money + "B | Turn: " + turn;
       }
@@ -340,7 +343,7 @@
       const branchLabel = c.branch === "navy" ? "Navy" : (c.branch === "air" ? "Air Force" : "Army");
       const tb = terrainBonus(id, c.branch);
       const terrainNote = tb > 1 ? " (terrain bonus: +" + Math.round((tb-1)*100) + "%)" : (tb < 1 ? " (terrain penalty: " + Math.round((tb-1)*100) + "%)" : " (no terrain bonus)");
-      card.innerHTML = "<div class=\"stat-name\">" + id + "</div>" +
+      card.innerHTML = "<div class=\"stat-name\">" + id + " <button onclick=\"document.getElementById('stats-card').className='stats-card';selectedTarget=null;\" style=\"float:right;background:none;border:none;color:#ef4444;font-size:18px;cursor:pointer;padding:0 4px;\">&times;</button></div>" +
         "<div class=\"stat-leader\">Leader: " + c.leader + " | " + c.gov + "</div>" +
         "<div>GDP: $" + c.gdp + "B | Population: " + c.population + "M | Military: " + c.mil + " | Dominant branch: " + branchLabel + terrainNote + " | Stability: " + c.stability + "%</div>" +
         "<div>Status: <span class=\"" + status + "\">" + status.toUpperCase() + "</span> | Claim cost: <span class=\"claim-cost\">$" + cost + "B</span></div>" +
