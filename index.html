@@ -34,6 +34,10 @@
     .sanction-banner { display: none; background: #713f12; border: 1px solid #fb923c; border-radius: 8px; padding: 10px 16px; margin: 10px 12px; font-size: 13px; }
     .sanction-banner.visible { display: block; }
     .sanction-banner .sanction-title { font-weight: 700; color: #fdba74; }
+    .chokepoint-banner { display: none; background: #1e3a5f; border: 1px solid #38bdf8; border-radius: 8px; padding: 10px 16px; margin: 10px 12px; font-size: 13px; }
+    .chokepoint-banner.visible { display: block; }
+    .chokepoint-banner .cp-title { font-weight: 700; color: #7dd3fc; }
+    .chokepoint-tag { color: #38bdf8; font-weight: 700; }
     .log { background: #0f172a; border-top: 1px solid #334155; padding: 12px; height: 100px; overflow-y: auto; font-size: 13px; }
     .version { position: absolute; top: 8px; right: 8px; z-index: 1000; background: rgba(15,23,42,0.85); color: #FFD700; font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 4px; }
     .leaflet-container { background: #0f172a; }
@@ -44,7 +48,7 @@
   </style>
 </head>
 <body>
-  <div class="version">11.24.26 V0.07</div>
+  <div class="version">11.24.26 V0.08</div>
   <div class="controls">
     <button onclick="nextTurn()" class="green">Next Turn</button>
     <button onclick="investMilitary()" class="blue">Invest in Military</button>
@@ -53,13 +57,16 @@
     <button onclick="research()">Research Tech</button>
     <button onclick="openUN()" class="purple">UN</button>
     <button onclick="fetchNews()" class="orange">News</button>
+    <button onclick="blockade()" class="blue">Blockade</button>
   </div>
   <div class="player-info" id="player-info">Select a country on the map to begin.</div>
   <div class="stats-card" id="stats-card"></div>
   <div class="crisis-banner" id="crisis-banner"></div>
   <div class="sanction-banner" id="sanction-banner"></div>
+  <div class="chokepoint-banner" id="chokepoint-banner"></div>
   <div id="map"></div>
   <div class="log" id="log">Welcome to World Powers 26. Tap a country to claim it.</div>
+  <script src="chokepoints.js"></script>
   <script>
     const GEOJSON_URL = "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson";
 
@@ -73,6 +80,7 @@
     let crisisCooldown = 0;
     let activeSanctions = [];
     let activeTariffs = [];
+    let activeBlockades = [];
 
     const palette = ["#3b82f6","#ef4444","#22c55e","#facc15","#a855f7","#fb923c","#14b8a6","#ec4899","#6366f1","#84cc16","#06b6d4","#f43f5e","#8b5cf6","#d946ef","#0ea5e9","#10b981"];
 
@@ -245,6 +253,12 @@
       return 1.0;
     }
 
+    function isChokepointBlocked(id) {
+      return activeBlockades.some(function(b) {
+        return chokepoints[b.name].countries.indexOf(id) !== -1;
+      });
+    }
+
     function styleFeature(feature) {
       const id = normalizeId(feature);
       const c = countries[id];
@@ -253,13 +267,14 @@
       const selected = c && selectedTarget === id;
       const crisisHit = activeCrisis && activeCrisis.center === id;
       const sanctioned = isSanctioned(id);
+      const blocked = isChokepointBlocked(id);
       return {
         fillColor: crisisHit ? "#ef4444" : getColor(id),
-        fillOpacity: owned ? 0.75 : (allied ? 0.55 : (crisisHit ? 0.6 : (sanctioned ? 0.2 : 0.35))),
-        color: selected ? "#facc15" : (owned ? "#FFD700" : (allied ? "#3b82f6" : (crisisHit ? "#fca5a5" : (sanctioned ? "#fb923c" : "#64748b")))),
-        weight: selected ? 3 : (owned ? 2.5 : (allied ? 1.5 : (crisisHit ? 2 : (sanctioned ? 1.5 : 0.6)))),
+        fillOpacity: owned ? 0.75 : (allied ? 0.55 : (crisisHit ? 0.6 : (blocked ? 0.15 : (sanctioned ? 0.2 : 0.35)))),
+        color: selected ? "#facc15" : (owned ? "#FFD700" : (allied ? "#3b82f6" : (crisisHit ? "#fca5a5" : (blocked ? "#38bdf8" : (sanctioned ? "#fb923c" : "#64748b"))))),
+        weight: selected ? 3 : (owned ? 2.5 : (allied ? 1.5 : (crisisHit ? 2 : (blocked ? 2.5 : (sanctioned ? 1.5 : 0.6))))),
         opacity: 1,
-        dashArray: sanctioned ? "6 4" : null
+        dashArray: (sanctioned || blocked) ? "6 4" : null
       };
     }
 
@@ -329,7 +344,7 @@
         "<div class=\"stat-leader\">Leader: " + c.leader + " | " + c.gov + "</div>" +
         "<div>GDP: $" + c.gdp + "B | Population: " + c.population + "M | Military: " + c.mil + " | Dominant branch: " + branchLabel + terrainNote + " | Stability: " + c.stability + "%</div>" +
         "<div>Status: <span class=\"" + status + "\">" + status.toUpperCase() + "</span> | Claim cost: <span class=\"claim-cost\">$" + cost + "B</span></div>" +
-        (canClaim ? "<button onclick=\"claimCountry('" + id + "')\">Claim Country</button>" : (owned ? "<div class=\"owned\">You own this country</div>" : (allied ? "<div class=\"allied\">Allied with you</div>" : "<div>Not enough money to claim</div>")));
+        (canClaim ? "<button onclick=\"claimCountry('" + id + "')\">Claim Country</button>" : (owned ? "<div class=\"owned\">You own this country</div>" : (allied ? "<div class=\"allied\">Allied with you</div>" : "<div>Not enough money to claim</div>"));
     }
 
     function claimCountry(id) {
@@ -374,6 +389,27 @@
       }
       activeSanctions = activeSanctions.filter(function(s) { return turn - s.turn < 4; });
       activeTariffs = activeTariffs.filter(function(t) { return turn - t.turn < 3; });
+      activeBlockades = activeBlockades.filter(function(b) { return turn - b.turn < 5; });
+      if (activeBlockades.length === 0) {
+        document.getElementById("chokepoint-banner").className = "chokepoint-banner";
+      } else {
+        showChokepointBanner();
+      }
+      let tollIncome = 0;
+      activeBlockades.forEach(function(b) {
+        const cp = chokepoints[b.name];
+        Object.keys(countries).forEach(function(id) {
+          if (countries[id].owner && countries[id].owner !== "You" && cp.countries.indexOf(id) === -1) {
+            const hit = Math.round(countries[id].gdp * cp.toll * 0.01);
+            tollIncome += hit;
+            countries[id].gdp = Math.max(1, countries[id].gdp - hit);
+          }
+        });
+      });
+      if (tollIncome > 0) {
+        money += tollIncome;
+        log("Chokepoint tolls collected: +$" + tollIncome + "B this turn.");
+      }
       document.getElementById("player-info").innerHTML = "You: " + playerCountry + " | Money: $" + money + "B | Turn: " + turn;
       if (selectedTarget) showStats(selectedTarget);
       if (geoLayer) geoLayer.setStyle(styleFeature);
@@ -461,6 +497,36 @@
       b.innerHTML = "<div class=\"crisis-title\">" + activeCrisis.title + "</div><div>" + activeCrisis.desc + " Centered on " + activeCrisis.center + ".</div><div class=\"vote-row\"><button onclick=\"openUN()\">Vote UN Resolution</button></div>";
     }
 
+    function showChokepointBanner() {
+      const b = document.getElementById("chokepoint-banner");
+      if (activeBlockades.length === 0) { b.className = "chokepoint-banner"; return; }
+      b.className = "chokepoint-banner visible";
+      b.innerHTML = activeBlockades.map(function(bl) {
+        const cp = chokepoints[bl.name];
+        return "<div class=\"cp-title\">" + bl.name + " BLOCKADED</div><div>" + cp.desc + "</div>";
+      }).join("");
+    }
+
+    function blockade() {
+      if (!playerCountry) { log("Claim a country first."); return; }
+      const owned = Object.keys(countries).filter(function(id) { return countries[id].owner === "You"; });
+      const options = [];
+      Object.keys(chokepoints).forEach(function(name) {
+        const cp = chokepoints[name];
+        const controlled = cp.countries.filter(function(c) { return owned.indexOf(c) !== -1; });
+        if (controlled.length > 0 && !activeBlockades.some(function(b) { return b.name === name; })) {
+          options.push(name);
+        }
+      });
+      if (options.length === 0) { log("You don't control any chokepoint countries. Claim one to blockade."); return; }
+      const choice = options[0];
+      const cp = chokepoints[choice];
+      activeBlockades.push({ name: choice, turn: turn });
+      log("BLOCKADE: " + choice + " established. " + cp.desc + " Toll: " + Math.round(cp.toll*100) + "% of affected trade.");
+      showChokepointBanner();
+      if (geoLayer) geoLayer.setStyle(styleFeature);
+    }
+
     function fetchNews() {
       const story = newsPool[Math.floor(Math.random() * newsPool.length)];
       log("NEWS: " + story.headline);
@@ -486,7 +552,7 @@
         map.fitBounds(geoLayer.getBounds());
         updateMilIcons();
         log("Map loaded with " + Object.keys(countries).length + " countries. Tap one to start.");
-        log("Russia-Ukraine war LIVE. US-Iran standoff active. UN crises, News, Sanctions, Tariffs, military icons, and terrain bonuses ready.");
+        log("Russia-Ukraine war LIVE. US-Iran standoff active. UN crises, News, Sanctions, Tariffs, military icons, terrain bonuses, and chokepoints ready.");
       })
       .catch(function(err) {
         log("Failed to load map data: " + err.message);
